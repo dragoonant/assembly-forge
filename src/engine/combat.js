@@ -115,6 +115,17 @@ export function targetsFor(state, uid, w) {
     out.push({ kind: 'garrison', id: g.gid });
   }
 
+  // An Engaged unit must target at least one of the enemies it is Engaged with (rulebook
+  // 2026-10-30, "Engagement"). Every target here is single, so that means only those enemies.
+  if (state.rules.movement.engagedMustTargetEngaged) {
+    const engaged = State.engagedWith(state, u.side, u.hex);
+    if (engaged.length) {
+      const ok = {};
+      for (let i = 0; i < engaged.length; i++) ok[engaged[i].kind + ':' + engaged[i].id] = true;
+      return out.filter(function (t) { return ok[t.kind + ':' + t.id]; });
+    }
+  }
+
   return out;
 }
 

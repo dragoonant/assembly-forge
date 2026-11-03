@@ -315,9 +315,9 @@ export function resolveLegal(state, action) {
  *   - one point to enter an ordinary hex;
  *   - one more per level of elevation *ascended* (descending is free);
  *   - whatever the terrain kind adds (water costs a hex);
- *   - a further point for entering an engaged hex -- one adjacent to an enemy
- *     unit or enemy Garrison. See `rules.movement.engagementCost` for why this
- *     is read as a penalty.
+ *   - and the whole allowance is one hex shorter when the move starts while
+ *     the unit is Engaged (`rules.movement.engagementPenalty`). Entering a hex
+ *     next to an enemy costs nothing extra; leaving one is what costs.
  *
  * And the restrictions:
  *
@@ -335,6 +335,9 @@ export function movementOptions(state, uid, allowance) {
   const u = State.unit(state, uid);
   const rules = state.rules;
   const startKey = Hex.key(u.hex);
+  if (rules.movement.engagementPenalty && State.isEngaged(state, u.side, u.hex)) {
+    allowance -= rules.movement.engagementPenalty;
+  }
 
   // Dijkstra: costs vary by hex, so a breadth-first walk would lie about which
   // hexes are in range. The frontier is scanned in (cost, key) order, which
@@ -483,8 +486,6 @@ export function enterCost(state, side, from, to) {
 
   const kind = State.terrainAt(state, to);
   if (kind) cost += kind.moveExtra;
-
-  if (m.engagementCost !== 0 && State.isEngaged(state, side, to)) cost += m.engagementCost;
 
   return Math.max(m.minHexCost, cost);
 }

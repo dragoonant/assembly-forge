@@ -48,6 +48,7 @@ export const ACTIONS = Object.freeze({
   dash: 'Dash',
   energize: 'Energize',
   rescue: 'Rescue',
+  deploy: 'Deploy',
   attack: 'Attack',
   end_activation: 'End turn'
 });
@@ -58,6 +59,7 @@ export const ACTION_HINTS = Object.freeze({
   dash: 'Move two more hexes, before or after Advancing.',
   energize: 'Bank one Energy token.',
   rescue: 'Claim an adjacent friendly garrison.',
+  deploy: 'Bring this machine onto the board at your base. It must then move off the base.',
   attack: 'Fire a weapon at a target in range.',
   end_activation: 'Finish this unit\'s turn.'
 });
@@ -111,7 +113,7 @@ export const SCENARIOS = Object.freeze({
       'Destroy an enemy machine to score the victory points printed on its card. The bigger the threat, the bigger the bounty.',
       'Rescue your own garrison by ending a Primary Action next to it. Destroy the enemy\'s by landing a single point of damage on it.',
       'Your machines start off the board and deploy from your base on their first turn. A destroyed machine goes back to reserve, is repaired, and deploys again two rounds later.',
-      'Control the objective by having more machines around it than the enemy at the end of a round. Control is banked into points only at the end of a Phase.'
+      'End a machine\'s turn on or next to an objective to contest it: with more of your machines there than theirs, a neutral objective becomes yours and one of theirs goes neutral. Control lasts until they win it back, and each objective you hold pays its points at the end of every Phase.'
     ]),
     victory:
       'Two Phases of ten rounds each. Most victory points at the end wins.',
@@ -152,8 +154,8 @@ export const KEYWORDS = Object.freeze({
   critical: "A natural 9 or 10. Triggers the weapon's critical effect once per attack, however many are rolled.",
   accuracyStat: "What each die must beat to hit — 4 by default. Modifiers shift the die face, not the target, which is why an unmodified 1 always misses and an unmodified 9 or 10 always hits.",
   strengthStat: "How many dice an attack rolls.",
-  engagement: "Moving into a hex next to an enemy unit or garrison costs one extra hex.",
-  objective: "Controlled by having more units than the enemy on the hexes AROUND it — standing on it does nothing. Control is checked every round but paid out only at the end of a Phase.",
+  engagement: "Next to an enemy machine or garrison on the same level, a machine is engaged: any move it starts goes one hex less, and its attacks must include an enemy it is engaged with.",
+  objective: "Contested by a machine that ends its turn on or next to it. More of your machines there than theirs wins: neutral becomes yours, theirs becomes neutral. Control lasts until lost, and pays at the end of each Phase.",
   garrison: "A stranded position. Rescue your own from an adjacent hex; destroy the enemy's by landing a single point of damage. Either scores 2 victory points.",
   command: "Usable at any point during this unit's activation, once each. Free in Timeline, though most cost Energy.",
   ongoing: "Always in force while its condition holds. Never used, never spent.",

@@ -104,18 +104,20 @@ export const DEFAULTS = {
     elevationCostPerLevel: 1,
 
     /**
-     * Entering a hex adjacent to an enemy unit, or to an enemy Garrison,
-     * costs this much on top of the base cost.
-     *
-     * The source phrasing is "costs -1 hex of movement", which can be read
-     * either as a penalty of one hex or as a discount of one hex. We read it
-     * as a penalty: a discount would make closing with the enemy *cheaper*
-     * than walking in the open, which inverts the zone-of-control idea the
-     * rule plainly exists to express. Set to -1 to take the other reading.
+     * Engagement (rulebook 2026-10-30, "Engagement"). A unit adjacent to an
+     * enemy unit or Garrison AT THE SAME ELEVATION is Engaged, and every
+     * movement it starts while Engaged has this many fewer hexes. Entering a
+     * hex next to an enemy costs nothing extra; it is leaving that costs.
      */
-    engagementCost: 1,
+    engagementPenalty: 1,
 
-    /** Do enemy Garrisons project engagement the way enemy units do? */
+    /** Engagement needs the same elevation; an enemy above or below does not engage. */
+    engagementSameElevation: true,
+
+    /** An Engaged unit's attacks must include at least one enemy it is Engaged with. */
+    engagedMustTargetEngaged: true,
+
+    /** Enemy Garrisons cause Engagement like enemy units. Rulebook 2026-10-30, "Garrisons". */
     engagementFromEnemyGarrison: true,
 
     /**
@@ -342,23 +344,35 @@ export const DEFAULTS = {
 
   scoring: {
     /**
-     * OPEN QUESTION 5. VP for holding an Objective at the end of a Phase is
-     * scenario-specified and no published number is available. One point per
-     * Objective per Phase is the default a scenario inherits if it says
-     * nothing; scenarios should set their own.
+     * RESOLVED (rulebook 2026-10-30): VP for holding an Objective at the end
+     * of a Phase is set by each scenario. This is only the fallback for a
+     * scenario that names none; the skirmish sets its own.
      */
     objectiveControlVp: 1,
 
-    /** VP for rescuing a friendly Garrison. Unverified. */
+    /** VP for rescuing a friendly Garrison. Rulebook 2026-10-30. */
     garrisonRescueVp: 2,
 
-    /** VP for destroying an enemy Garrison. Unverified. */
+    /** VP for destroying an enemy Garrison. Rulebook 2026-10-30. */
     garrisonDestroyVp: 2,
 
-    /** Objective control is recalculated at the end of every round... */
-    objectiveControlPerRound: true,
+    /**
+     * How an Objective changes hands.
+     *
+     *   'contest'  -- the rulebook (2026-10-30, "Controlling Objectives"). A
+     *                 unit contests every Objective it ends its OWN activation
+     *                 on or next to. It succeeds if more allied units than
+     *                 enemy units are on or next to that Objective; ties fail.
+     *                 A neutral Objective is captured; an enemy-held one goes
+     *                 back to neutral. Control then persists until the enemy
+     *                 wins a contest, whoever stands nearby.
+     *   'majority' -- the pre-retail reading, kept for comparison: recomputed
+     *                 at the end of every round from adjacent units only, with
+     *                 a tie leaving it uncontrolled.
+     */
+    objectiveControl: 'contest',
 
-    /** ...but only the controller at the end of a Phase banks the points. */
+    /** Whoever controls an Objective at the end of a Phase scores its VP. */
     objectiveScoreAtPhaseEnd: true
   },
 
@@ -458,8 +472,8 @@ export const HOUSE_DECISIONS = Object.freeze([
     decision: 'Sides alternate for the whole round, not only its first activation.'
   }),
   Object.freeze({
-    path: 'movement.engagementCost',
-    decision: 'Engagement is a one-hex penalty, not a one-hex discount.'
+    path: 'movement.engagementPenalty',
+    decision: 'RESOLVED (rulebook 2026-10-30): a move started while Engaged loses one hex; Engagement needs the same elevation.'
   }),
   Object.freeze({
     path: 'movement.enemyGarrisonBlocks',
@@ -471,7 +485,7 @@ export const HOUSE_DECISIONS = Object.freeze([
   }),
   Object.freeze({
     path: 'movement.engagementFromEnemyGarrison',
-    decision: 'An enemy Garrison projects engagement the way an enemy unit does.'
+    decision: 'RESOLVED (rulebook 2026-10-30): an enemy Garrison causes Engagement like an enemy unit.'
   }),
   Object.freeze({
     path: 'tactics.lockoutAfterDefensivePlay',

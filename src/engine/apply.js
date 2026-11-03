@@ -235,6 +235,9 @@ function endActivation(state) {
     spendTimeline(state, act.uid, state.rules.actions.forcedPassTlCost);
   }
 
+  // Contesting happens when a unit ends its own activation on or next to an Objective.
+  if (state.rules.scoring.objectiveControl === 'contest' && !act.defeated) contestObjectives(state, act.uid);
+
   state.lastActedSide = act.side;
   state.lastActedRound = state.round;
   state.activation = null;
@@ -283,12 +286,57 @@ function settle(state) {
  * @param {Object} state
  */
 function endRound(state) {
-  if (state.rules.scoring.objectiveControlPerRound) recomputeObjectiveControl(state);
+  if (state.rules.scoring.objectiveControl === 'majority') recomputeObjectiveControl(state);
   state.log.push({ t: 'round_end', round: state.round, phase: state.phase });
 }
 
 /**
- * Recalculate who holds each objective.
+ * The rulebook's contest (see `rules.scoring.objectiveControl`): a unit ending its own activation
+ * contests every Objective it stands on or next to.
+ *
+ * @param {Object} state
+ * @param {string} uid
+ */
+export function contestObjectives(state, uid) {
+  const u = state.units[uid];
+  if (!u || !u.alive || !u.hex) return;
+  const foe = State.opponent(u.side);
+  for (let i = 0; i < state.objectiveOrder.length; i++) {
+    const o = state.objectives[state.objectiveOrder[i]];
+    if (Hex.distance(u.hex, o.hex) > 1) continue;
+    const counts = unitsAround(state, o.hex);
+    if (counts[u.side] <= counts[foe]) {
+      state.log.push({ t: 'objective_contest', oid: o.oid, uid: uid, side: u.side, counts: counts, won: false });
+      continue;
+    }
+    const was = o.controlledBy;
+    if (was === u.side) continue;
+    o.controlledBy = was === null ? u.side : null;
+    state.log.push({
+      t: 'objective_control', oid: o.oid, side: o.controlledBy, by: uid, was: was,
+      counts: counts, notice: true
+    });
+  }
+}
+
+/**
+ * Living units on an Objective's hex or adjacent to it, per side.
+ * @param {Object} state
+ * @param {{q: number, r: number}} h
+ * @returns {[number, number]}
+ */
+function unitsAround(state, h) {
+  const counts = [0, 0];
+  const hexes = [h].concat(Hex.neighbours(h));
+  for (let j = 0; j < hexes.length; j++) {
+    const u = State.unitAt(state, hexes[j]);
+    if (u && u.alive) counts[u.side]++;
+  }
+  return counts;
+}
+
+/**
+ * Recalculate who holds each objective, the pre-retail 'majority' reading.
  *
  * Control goes to whichever side has strictly more living units on the hexes
  * SURROUNDING the marker -- adjacency, not occupancy, which is why a unit
@@ -333,7 +381,7 @@ export function recomputeObjectiveControl(state) {
 function endPhase(state) {
   // Objectives are banked here, not when control changes hands.
   if (state.rules.scoring.objectiveScoreAtPhaseEnd) {
-    recomputeObjectiveControl(state);
+    if (state.rules.scoring.objectiveControl === 'majority') recomputeObjectiveControl(state);
     for (let i = 0; i < state.objectiveOrder.length; i++) {
       const o = state.objectives[state.objectiveOrder[i]];
       if (o.controlledBy === null) continue;

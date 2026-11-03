@@ -88,8 +88,11 @@ export function evaluate(state, side) {
 
   for (let i = 0; i < state.objectiveOrder.length; i++) {
     const o = state.objectives[state.objectiveOrder[i]];
-    if (o.controlledBy === side) score += w.objectiveHeld;
-    else if (o.controlledBy === foe) score -= w.objectiveHeld;
+    // Weighted by what the Objective pays, against a 4 VP reference, so the high centre matters
+    // more than a flank.
+    const worth = w.objectiveHeld * (o.vp / 4);
+    if (o.controlledBy === side) score += worth;
+    else if (o.controlledBy === foe) score -= worth;
   }
 
   for (let i = 0; i < state.garrisonOrder.length; i++) {
@@ -116,8 +119,8 @@ function proximityBonus(state, u) {
   for (let i = 0; i < state.objectiveOrder.length; i++) {
     const o = state.objectives[state.objectiveOrder[i]];
     const d = Hex.distance(u.hex, o.hex);
-    // Adjacent is what actually controls an objective, so the peak is at 1.
-    const value = d === 1 ? 10 : Math.max(0, 8 - d);
+    // On or next to it is where a unit can contest it, so the peak covers both.
+    const value = d <= 1 ? 10 : Math.max(0, 8 - d);
     if (value > best) best = value;
   }
   for (let i = 0; i < state.garrisonOrder.length; i++) {

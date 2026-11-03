@@ -760,7 +760,7 @@ T.suite('movement', function () {
         F.unit('a2', 'u04', 0, H(-1, 0), { tl: 5 }),
         F.unit('b1', 'u06', 1, H(0, 0), { tl: 5 })
       ],
-      rules: { movement: { engagementCost: 0 } }
+      rules: { movement: { engagementPenalty: 0 } }
     });
     T.eq(s.activation.uid, 'a1');
     T.notOk(T.find(s, { type: 'advance', to: H(-1, 0) }), 'cannot stop on a friendly unit');
@@ -784,7 +784,7 @@ T.suite('movement', function () {
   T.test('a unit may not move through an enemy unit and must detour', function () {
     const s = F.game({
       // Engagement off, so this test is about the wall and nothing else.
-      rules: { movement: { engagementCost: 0 } },
+      rules: { movement: { engagementPenalty: 0 } },
       units: [
         F.unit('a1', 'u02', 0, H(-3, 0), { tl: 1 }),
         F.unit('b1', 'u06', 1, H(-2, 0), { tl: 5 })
@@ -802,7 +802,7 @@ T.suite('movement', function () {
   T.test('impassable terrain is neither entered nor crossed', function () {
     const s = F.game({
       board: F.arena({ hexes: { '-2,0': { terrain: 'blocked' } } }),
-      rules: { movement: { engagementCost: 0 } },
+      rules: { movement: { engagementPenalty: 0 } },
       units: [F.unit('a1', 'u02', 0, H(-3, 0), { tl: 1 })]
     });
     T.notOk(T.find(s, { type: 'advance', to: H(-2, 0) }));
@@ -865,7 +865,7 @@ T.suite('movement', function () {
     T.eq(beyond.cost, 3, 'wading through and out again');
   });
 
-  T.test('entering an engaged hex costs an extra hex', function () {
+  T.test('walking up to an enemy costs nothing extra', function () {
     const s = F.game({
       units: [
         F.unit('a1', 'u02', 0, H(-3, 0), { tl: 1 }),
@@ -874,20 +874,53 @@ T.suite('movement', function () {
     });
     T.ok(State.isEngaged(s, 0, H(0, 0)), 'next to the enemy');
     T.notOk(State.isEngaged(s, 0, H(-1, 0)), 'two hexes away is not');
-    T.eq(Actions.enterCost(s, 0, H(-1, 0), H(0, 0)), 2, 'engagement adds one');
-    T.notOk(T.find(s, { type: 'advance', to: H(0, 0) }), 'so the hex is out of Advance range');
-    T.ok(T.find(s, { type: 'advance', to: H(-1, 0) }), 'while the hex before it is not');
+    T.eq(Actions.enterCost(s, 0, H(-1, 0), H(0, 0)), 1, 'no surcharge to enter');
+    T.ok(T.find(s, { type: 'advance', to: H(0, 0) }), 'so the engaged hex is a full Advance away');
   });
 
-  T.test('engagement is a penalty, and the reading is one config value', function () {
-    const discount = F.game({
-      rules: { movement: { engagementCost: -1 } },
+  T.test('a move started while Engaged loses one hex', function () {
+    const s = F.game({
       units: [
-        F.unit('a1', 'u02', 0, H(-3, 0), { tl: 1 }),
+        F.unit('a1', 'u02', 0, H(0, 0), { tl: 1 }),
         F.unit('b1', 'u06', 1, H(1, 0), { tl: 5 })
       ]
     });
-    T.eq(Actions.enterCost(discount, 0, H(-1, 0), H(0, 0)), 0, 'the other reading of "-1 hex"');
+    T.ok(State.isEngaged(s, 0, H(0, 0)));
+    T.ok(T.find(s, { type: 'advance', to: H(-2, 0) }), 'two hexes away is still reachable');
+    T.notOk(T.find(s, { type: 'advance', to: H(-3, 0) }), 'but three is not: the Advance is one short');
+    const free = F.game({
+      rules: { movement: { engagementPenalty: 0 } },
+      units: [
+        F.unit('a1', 'u02', 0, H(0, 0), { tl: 1 }),
+        F.unit('b1', 'u06', 1, H(1, 0), { tl: 5 })
+      ]
+    });
+    T.ok(T.find(free, { type: 'advance', to: H(-3, 0) }), 'with the penalty off the full three come back');
+  });
+
+  T.test('an enemy on a different elevation does not engage', function () {
+    const s = F.game({
+      arena: { hexes: { '1,0': { elevation: 1 } } },
+      units: [
+        F.unit('a1', 'u02', 0, H(0, 0), { tl: 1 }),
+        F.unit('b1', 'u06', 1, H(1, 0), { tl: 5 })
+      ]
+    });
+    T.notOk(State.isEngaged(s, 0, H(0, 0)), 'the enemy stands a level higher');
+    T.ok(T.find(s, { type: 'advance', to: H(-3, 0) }), 'so the Advance is not shortened');
+  });
+
+  T.test('an Engaged unit may only attack an enemy it is Engaged with', function () {
+    const s = F.game({
+      units: [
+        F.unit('a1', 'u02', 0, H(0, 0), { tl: 1 }),
+        F.unit('b1', 'u06', 1, H(1, 0), { tl: 5 }),
+        F.unit('b2', 'u03', 1, H(-2, 0), { tl: 5 })
+      ]
+    });
+    const attacks = T.findAll(s, { type: 'attack' });
+    T.ok(attacks.length > 0);
+    for (let i = 0; i < attacks.length; i++) T.eq(attacks[i].target.id, 'b1', 'only the adjacent enemy');
   });
 
   T.test('an enemy garrison blocks movement and projects engagement', function () {
@@ -897,7 +930,7 @@ T.suite('movement', function () {
     });
     T.notOk(T.find(s, { type: 'advance', to: H(-1, 0) }), 'cannot enter it');
     T.ok(State.isEngaged(s, 0, H(-2, 0)), 'and it engages the hex next door');
-    T.eq(T.find(s, { type: 'advance', to: H(-2, 0) }).cost, 2);
+    T.eq(T.find(s, { type: 'advance', to: H(-2, 0) }).cost, 1, 'arriving next to it costs nothing extra');
   });
 
   T.test('a friendly garrison may be crossed but not stopped on', function () {
@@ -1116,7 +1149,7 @@ T.suite('invariants', function () {
     const variants = [
       { timeline: { overflow: 'reset' } },
       { timeline: { alternateWithinRound: false } },
-      { movement: { engagementCost: -1 } },
+      { movement: { engagementPenalty: 0, engagementSameElevation: false } },
       { movement: { noEndOnStartHex: false } },
       { movement: { enemyGarrisonBlocks: false, engagementFromEnemyGarrison: false } },
       { match: { phasesPerGame: 5 } },

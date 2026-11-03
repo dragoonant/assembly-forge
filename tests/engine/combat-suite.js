@@ -371,38 +371,61 @@ T.suite('rescue and objectives', function () {
     T.eq(T.findAll(g, function (a) { return a.type === 'rescue'; }).length, 0);
   });
 
-  T.test('an objective goes to whoever has more units around it', function () {
+  T.test('a unit ending its activation next to a neutral objective, with more allies around, captures it', function () {
     const g = F.game({
       units: [
         F.unit('a1', 'u02', 0, H(1, 0), { tl: 1 }),
-        F.unit('a2', 'u04', 0, H(0, 1), { tl: 1 }),
-        F.unit('b1', 'u06', 1, H(-1, 0), { tl: 1 })
+        F.unit('a2', 'u04', 0, H(0, 1), { tl: 5 }),
+        F.unit('b1', 'u06', 1, H(-1, 0), { tl: 5 })
       ],
       objectives: [{ oid: 'o1', hex: H(0, 0), vp: 5 }]
     });
-    Apply.recomputeObjectiveControl(g);
-    T.eq(g.objectives.o1.controlledBy, 0, 'two adjacent against one');
+    T.eq(g.objectives.o1.controlledBy, null, 'neutral to start');
+    const s = Apply.apply(Apply.apply(g, { type: 'energize', uid: 'a1' }), { type: 'end_activation', uid: 'a1' });
+    T.eq(s.objectives.o1.controlledBy, 0, 'two against one');
   });
 
-  T.test('an equal count leaves an objective uncontrolled', function () {
+  T.test('a tied contest changes nothing', function () {
     const g = F.game({
       units: [
         F.unit('a1', 'u02', 0, H(1, 0), { tl: 1 }),
-        F.unit('b1', 'u06', 1, H(-1, 0), { tl: 1 })
+        F.unit('b1', 'u06', 1, H(-1, 0), { tl: 5 })
       ],
       objectives: [{ oid: 'o1', hex: H(0, 0), vp: 5 }]
     });
-    Apply.recomputeObjectiveControl(g);
-    T.eq(g.objectives.o1.controlledBy, null);
+    const s = Apply.apply(Apply.apply(g, { type: 'energize', uid: 'a1' }), { type: 'end_activation', uid: 'a1' });
+    T.eq(s.objectives.o1.controlledBy, null);
   });
 
-  T.test('standing ON an objective does not control it', function () {
+  T.test('standing ON an objective contests it too', function () {
     const g = F.game({
       units: [F.unit('a1', 'u02', 0, H(0, 0), { tl: 1 })],
       objectives: [{ oid: 'o1', hex: H(0, 0), vp: 5 }]
     });
-    Apply.recomputeObjectiveControl(g);
-    T.eq(g.objectives.o1.controlledBy, null, 'control is adjacency, not occupancy');
+    const s = Apply.apply(Apply.apply(g, { type: 'energize', uid: 'a1' }), { type: 'end_activation', uid: 'a1' });
+    T.eq(s.objectives.o1.controlledBy, 0);
+  });
+
+  T.test('control persists, and an enemy contest only neutralises it', function () {
+    const g = F.game({
+      units: [
+        F.unit('a1', 'u02', 0, H(5, -5), { tl: 1 }),
+        F.unit('b1', 'u06', 1, H(1, 0), { tl: 1 })
+      ],
+      objectives: [{ oid: 'o1', hex: H(0, 0), vp: 5 }]
+    });
+    g.objectives.o1.controlledBy = 0;
+    let s = g;
+    // whoever is up first, play until b1 has ended an activation next to the marker
+    let guard = 0;
+    while (guard++ < 10) {
+      const who = s.activation.uid;
+      s = Apply.apply(s, { type: 'energize', uid: who });
+      s = Apply.apply(s, { type: 'end_activation', uid: who });
+      if (who === 'b1') break;
+      T.eq(s.objectives.o1.controlledBy, 0, 'still held with nobody of ours nearby');
+    }
+    T.eq(s.objectives.o1.controlledBy, null, 'the enemy contest returns it to neutral, not to them');
   });
 
   T.test('objectives pay out at the end of a Phase, not when taken', function () {

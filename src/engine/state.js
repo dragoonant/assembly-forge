@@ -253,26 +253,42 @@ export function objectiveAt(state, h) {
 }
 
 /**
- * Is a hex engaged for a unit of `side` -- that is, adjacent to an enemy unit,
- * or (by house rule) to an enemy Garrison? Movement into an engaged hex costs
- * extra; see `rules.movement.engagementCost`.
+ * The enemies a unit of `side` standing on `h` is Engaged with: enemy units and enemy Garrisons on
+ * adjacent hexes at the same elevation (rulebook 2026-10-30, "Engagement").
  *
  * @param {Object} state
  * @param {Side} side
- * @param {{q: number, r: number}} h
+ * @param {?{q: number, r: number}} h
+ * @returns {Array<{kind: string, id: string}>}
+ */
+export function engagedWith(state, side, h) {
+  const out = [];
+  if (!h) return out;
+  const m = state.rules.movement;
+  const level = elevationAt(state, h);
+  const around = Hex.neighbours(h);
+  for (let i = 0; i < around.length; i++) {
+    if (m.engagementSameElevation && elevationAt(state, around[i]) !== level) continue;
+    const u = unitAt(state, around[i]);
+    if (u && u.side !== side) out.push({ kind: 'unit', id: u.uid });
+    if (m.engagementFromEnemyGarrison) {
+      const g = garrisonAt(state, around[i]);
+      if (g && g.side !== null && g.side !== side) out.push({ kind: 'garrison', id: g.gid });
+    }
+  }
+  return out;
+}
+
+/**
+ * Would a unit of `side` standing on `h` be Engaged?
+ *
+ * @param {Object} state
+ * @param {Side} side
+ * @param {?{q: number, r: number}} h
  * @returns {boolean}
  */
 export function isEngaged(state, side, h) {
-  const around = Hex.neighbours(h);
-  for (let i = 0; i < around.length; i++) {
-    const u = unitAt(state, around[i]);
-    if (u && u.side !== side) return true;
-    if (state.rules.movement.engagementFromEnemyGarrison) {
-      const g = garrisonAt(state, around[i]);
-      if (g && g.side !== null && g.side !== side) return true;
-    }
-  }
-  return false;
+  return engagedWith(state, side, h).length > 0;
 }
 
 /**
