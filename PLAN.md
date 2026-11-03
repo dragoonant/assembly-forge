@@ -1,7 +1,8 @@
 # Assembly Forge: MegaMechaTactics in 3D
 
 **Status: approved direction, 2026-11-03.** Nothing below is built. The owner
-settled D1, D2, D5, D6 and the card portraits on 2026-11-03.
+settled D1, D2 and D5 to D10, and the card portraits, on 2026-11-03.
+M0 (scaffold) is built; see STATUS.md.
 
 Assembly Forge is the 3D successor to MegaMechaTactics. It keeps that game's
 rules engine, roster, Tactics deck and AI, replaces the SVG hex map with a 3D
@@ -162,6 +163,29 @@ project, which places its own. The renderer is the same either way; the scenario
 changes. Hex count and map size come from the rulebook, never from a scan or
 photo of a published map. The terrain layout on it stays our own, so no
 published map layout is copied.
+
+### D7. Hosting: public repository, GitHub Pages — decided 2026-11-03
+
+The repository is public on GitHub, and every push to `main` deploys to
+GitHub Pages under `/assembly-forge/`, like the sibling games.
+
+### D8. Title: Assembly Forge — decided 2026-11-03
+
+Players see "Assembly Forge" on the title screen and in the page title. The
+string lives in `src/content/names.js` like every other display name.
+
+### D9. Squads: 3v3 only for the first slice — decided 2026-11-03
+
+The slice plays the starter format: three machines a side from the existing
+six, on the 203-hex starter grid. Five-a-side waits for more machines and a
+larger map.
+
+### D10. Rule scope: core rules first — decided 2026-11-03
+
+The slice implements every rule the six machines and the starter map use.
+Carriers, remote weapon tokens, Reinforcements, carried Objectives, Challenge,
+Swap, Reposition and Setup abilities wait until content needs them. They stay
+listed under "Rules to add" in §6 so nothing is lost.
 
 ## 3. Layout
 

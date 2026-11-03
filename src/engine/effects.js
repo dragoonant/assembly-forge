@@ -1,0 +1,317 @@
+/**
+ * Abilities as data.
+ *
+ * Nothing in this project stores a sentence describing what an ability does.
+ * An ability is `{aid, timing, cost, when, effects}` and the English a player
+ * reads is generated from that structure at display time. This is the single
+ * strongest protection in the project's IP position, because it makes pasting
+ * published wording into a definition impossible -- there is no field to paste
+ * it into. It also buys a consistent voice for free, and lets a new unit be a
+ * data file with no engine change.
+ *
+ * THE BUG CLASS THIS INVITES, and the reason `content-suite.js` exists: the
+ * engine can happily enforce a condition or an effect field that the text
+ * generator never learned to say. The player then sees an ability that appears
+ * to do nothing, or a sentence with a hole in it. It fails silently in both
+ * directions and it produced four separate user-visible bugs in the sibling
+ * project. Every describer in `src/content/abilitytext.js` has a counterpart
+ * here, and a test renders all of them.
+ *
+ * THREE TIMINGS, from the sources:
+ *
+ *   command   usable at any point during this unit's activation, once, if its
+ *             condition holds. May cost Energy.
+ *   ongoing   continuously true while its condition holds. Never "used" --
+ *             it is read at the moment the value it modifies is computed.
+ *   response  fires when a named event happens, whether or not the unit is
+ *             activating.
+ */
+
+import * as Hex from './hex.js';
+import * as State from './state.js';
+
+/**
+ * @typedef {Object} Ability
+ * @property {string} aid
+ * @property {'command'|'ongoing'|'response'} timing
+ * @property {number} [energy]   Energy spent to use it, command only
+ * @property {string} [on]       event id, response only
+ * @property {Object} [when]     condition, see `conditionHolds`
+ * @property {string} [target]   'self' | 'enemyInRange' | 'adjacentEnemy'
+ * @property {number} [range]
+ * @property {Array<Object>} effects
+ */
+
+/** Effect kinds the engine resolves. Anything else is a bug, not a no-op. */
+export const EFFECT_KINDS = Object.freeze([
+  'strength', 'accuracy', 'move', 'energy', 'damage', 'status', 'heal', 'extraAttack'
+]);
+
+/** Response events the engine raises. */
+export const EVENTS = Object.freeze([
+  'rescue', 'destroy', 'damaged', 'dash'
+]);
+
+/**
+ * @param {Object} u
+ * @returns {Ability[]}
+ */
+export function abilitiesOf(u) {
+  return u.abilities || [];
+}
+
+/**
+ * @param {Object} u
+ * @param {string} aid
+ * @returns {?Ability}
+ */
+export function ability(u, aid) {
+  const list = abilitiesOf(u);
+  for (let i = 0; i < list.length; i++) if (list[i].aid === aid) return list[i];
+  return null;
+}
+
+/**
+ * Does an ability's condition hold right now?
+ *
+ * Every key here must have a describer in `abilitytext.js`. An unspoken
+ * condition is the exact failure this module's header warns about: the ability
+ * reads as unconditional and appears broken when it declines to fire.
+ *
+ * @param {Object} state
+ * @param {Object} u
+ * @param {?Object} when
+ * @returns {boolean}
+ */
+export function conditionHolds(state, u, when) {
+  if (!when) return true;
+
+  if (when.damageTaken !== undefined) {
+    if (u.maxHp - u.hp < when.damageTaken) return false;
+  }
+  if (when.objectives !== undefined) {
+    let held = 0;
+    for (let i = 0; i < state.objectiveOrder.length; i++) {
+      if (state.objectives[state.objectiveOrder[i]].controlledBy === u.side) held++;
+    }
+    if (held < when.objectives) return false;
+  }
+  if (when.upgrades !== undefined) {
+    if (u.upgrades.length < when.upgrades) return false;
+  }
+  if (when.alliesInRange !== undefined) {
+    const spec = when.alliesInRange;
+    let n = 0;
+    const units = State.livingUnits(state, u.side);
+    for (let i = 0; i < units.length; i++) {
+      if (units[i].uid === u.uid) continue;
+      if (Hex.distance(u.hex, units[i].hex) <= spec.range) n++;
+    }
+    if (n < spec.n) return false;
+  }
+  if (when.enemyAdjacent !== undefined) {
+    const around = Hex.neighbours(u.hex);
+    let found = false;
+    for (let i = 0; i < around.length; i++) {
+      const other = State.unitAt(state, around[i]);
+      if (other && other.side !== u.side) { found = true; break; }
+    }
+    if (found !== when.enemyAdjacent) return false;
+  }
+  return true;
+}
+
+/**
+ * The total ongoing modifier of one kind on a unit.
+ *
+ * Read at the moment the value is computed rather than applied when the
+ * condition becomes true, so an ongoing ability that depends on damage taken
+ * changes the same instant the damage lands.
+ *
+ * @param {Object} state
+ * @param {Object} u
+ * @param {string} kind 'strength' | 'accuracy'
+ * @returns {number}
+ */
+export function ongoingModifier(state, u, kind) {
+  let total = 0;
+  const list = abilitiesOf(u);
+  for (let i = 0; i < list.length; i++) {
+    const a = list[i];
+    if (a.timing !== 'ongoing') continue;
+    if (!conditionHolds(state, u, a.when)) continue;
+    for (let j = 0; j < a.effects.length; j++) {
+      if (a.effects[j].k === kind) total += a.effects[j].n;
+    }
+  }
+  return total;
+}
+
+/**
+ * Does a unit have an ongoing ability granting a named flag?
+ * @param {Object} state
+ * @param {Object} u
+ * @param {string} flag
+ * @returns {boolean}
+ */
+export function hasOngoingFlag(state, u, flag) {
+  const list = abilitiesOf(u);
+  for (let i = 0; i < list.length; i++) {
+    const a = list[i];
+    if (a.timing !== 'ongoing' || a.flag !== flag) continue;
+    if (conditionHolds(state, u, a.when)) return true;
+  }
+  return false;
+}
+
+/**
+ * Targets a command ability could be used on.
+ *
+ * @param {Object} state
+ * @param {Object} u
+ * @param {Ability} a
+ * @returns {Array<?string>} unit ids, or `[null]` for a self-targeted ability
+ */
+export function targetsFor(state, u, a) {
+  if (!a.target || a.target === 'self') return [null];
+
+  const out = [];
+  const range = a.target === 'adjacentEnemy' ? 1 : (a.range === undefined ? 1 : a.range);
+  const units = State.livingUnits(state);
+  for (let i = 0; i < units.length; i++) {
+    const t = units[i];
+    if (t.side === u.side) continue;
+    if (Hex.distance(u.hex, t.hex) > range) continue;
+    out.push(t.uid);
+  }
+  out.sort();
+  return out;
+}
+
+/**
+ * May this unit use this command ability right now?
+ *
+ * @param {Object} state
+ * @param {Object} u
+ * @param {Ability} a
+ * @returns {boolean}
+ */
+export function canUseCommand(state, u, a) {
+  if (a.timing !== 'command') return false;
+  if (a.energy && u.energy < a.energy) return false;
+  if (!conditionHolds(state, u, a.when)) return false;
+  if (a.target && a.target !== 'self' && !targetsFor(state, u, a).length) return false;
+  return true;
+}
+
+// --- Resolution --------------------------------------------------------------
+
+/**
+ * Apply an ability's effects. MUTATES `state`, which is safe because every
+ * caller is working on a clone.
+ *
+ * @param {Object} state
+ * @param {string} uid       the unit whose ability this is
+ * @param {Ability} a
+ * @param {?string} targetUid
+ * @param {Object} combat    the combat module, injected to avoid a cycle
+ * @returns {Object} a summary for the log
+ */
+export function resolve(state, uid, a, targetUid, combat) {
+  const u = State.unit(state, uid);
+  const applied = [];
+
+  for (let i = 0; i < a.effects.length; i++) {
+    const e = a.effects[i];
+    switch (e.k) {
+      case 'strength':
+      case 'accuracy':
+        // Activation-scoped: it lasts until this unit's turn ends, which is
+        // what "this activation" means on every published card.
+        if (state.activation && state.activation.uid === uid) {
+          state.activation.mods[e.k] += e.n;
+          applied.push(e.k);
+        }
+        break;
+
+      case 'move':
+        // Grants movement and REOPENS the movement block, because an ability
+        // that says "move 2" has to work after the unit has already stopped --
+        // otherwise it only functions on a turn the unit had not yet moved,
+        // which is not what it says.
+        if (state.activation && state.activation.uid === uid) {
+          state.activation.mods.move += e.n;
+          state.activation.movementClosed = false;
+          applied.push('move');
+        }
+        break;
+
+      case 'energy':
+        u.energy += e.n;
+        applied.push('energy');
+        break;
+
+      case 'heal':
+        u.hp = Math.min(u.maxHp, u.hp + e.n);
+        applied.push('heal');
+        break;
+
+      case 'extraAttack':
+        if (state.activation && state.activation.uid === uid) {
+          state.activation.extraAttacks += (e.n === undefined ? 1 : e.n);
+          applied.push('extraAttack');
+        }
+        break;
+
+      case 'damage':
+        if (targetUid) {
+          combat.dealDamage(state, { kind: 'unit', id: targetUid }, e.n, u.side);
+          applied.push('damage');
+        }
+        break;
+
+      case 'status':
+        if (targetUid && combat.applyStatus(state, targetUid, e.s)) applied.push('status');
+        break;
+
+      default:
+        // Loud, not silent. An effect kind the engine does not know is a
+        // content bug, and a no-op would hide it behind an ability that simply
+        // never seems to do anything.
+        throw new Error('Unknown effect kind: ' + e.k);
+    }
+  }
+
+  if (a.energy) u.energy -= a.energy;
+
+  state.log.push({
+    t: 'ability', uid: uid, aid: a.aid, target: targetUid || null,
+    applied: applied, sound: 'ability', notice: true
+  });
+  return { applied: applied };
+}
+
+/**
+ * Raise a response event and fire whatever answers it.
+ *
+ * Responses fire whether or not their unit is activating, which is what makes
+ * them different from commands. Only the unit's OWN responses are considered
+ * here; a reaction to somebody else's event is a Tactics card's job.
+ *
+ * @param {Object} state
+ * @param {string} uid
+ * @param {string} event
+ * @param {Object} combat
+ */
+export function raise(state, uid, event, combat) {
+  const u = state.units[uid];
+  if (!u || !u.alive) return;
+  const list = abilitiesOf(u);
+  for (let i = 0; i < list.length; i++) {
+    const a = list[i];
+    if (a.timing !== 'response' || a.on !== event) continue;
+    if (!conditionHolds(state, u, a.when)) continue;
+    const targets = targetsFor(state, u, a);
+    resolve(state, uid, a, targets.length ? targets[0] : null, combat);
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "name": "assembly-forge",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Assembly Forge: an original 3D hex tactics game with a Timeline scheduler.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run test:engine && npm run test:unit",
+    "test:engine": "node tests/engine/run.js",
+    "test:unit": "vitest run",
+    "e2e": "playwright test",
+    "selfplay": "node tools/ai-selfplay.js",
+    "headtohead": "node tools/ai-headtohead.js"
+  },
+  "dependencies": {
+    "@react-three/drei": "^10.7.8",
+    "@react-three/fiber": "^9.7.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "three": "^0.186.0",
+    "zustand": "^5.0.15"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^25.9.6",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.7",
+    "@types/three": "^0.186.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.0",
+    "vitest": "^5.0.0"
+  }
+}

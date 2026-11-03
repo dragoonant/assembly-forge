@@ -1,0 +1,14 @@
+/* Placeholder chrome until the hangar-deck skin (PLAN.md D5, M5). Tokens first so the skin pass is a values change. */
+:root {
+  --deck: #101216;
+  --gunmetal: #2a2e35;
+  --steel: #8c939e;
+  --amber: #f0a830;
+  --text: #e6e8eb;
+}
+html, body, #root { margin: 0; width: 100%; height: 100%; overflow: hidden; background: var(--deck); color: var(--text); font-family: system-ui, sans-serif; }
+.app { position: relative; width: 100%; height: 100%; }
+.app canvas { touch-action: none; display: block; }
+.topbar { position: absolute; top: 0; left: 0; right: 0; display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; pointer-events: none; }
+.topbar h1 { margin: 0; font-size: 18px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--amber); }
+.topbar .reset { pointer-events: auto; width: 36px; height: 36px; border-radius: 6px; border: 1px solid var(--steel); background: var(--gunmetal); color: var(--text); font-size: 18px; cursor: pointer; }
