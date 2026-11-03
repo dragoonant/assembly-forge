@@ -122,9 +122,43 @@ side, the new game must not be mistakable for any of them. Two candidates:
 ### D6. Board size: match retail — decided 2026-11-03
 
 The board uses the retail hex size and map dimensions, so the game lines up
-with the physical set. The rulebook does not give them; they come from the
-starter set's map or scenario sheet, and M1 cannot finish the scenario
-without them. The renderer is the same either way; the scenario file
+with the physical set.
+
+**The starter map's grid, measured 2026-11-03** from the publisher's play
+guide (the setup illustration, `images/about/playguide/img_03.png`, 629 by
+622 px) by tracing the white board outline pixel by pixel:
+
+| Property | Value |
+| --- | --- |
+| Orientation | Pointy-top hexes in horizontal rows, as drawn with the Timeline track along the top edge. The players sit at the left and right edges, so each faces a flat side. |
+| Rows | **15**, alternating long and short, starting and ending on a long row |
+| Long rows | 8 rows of **14** hexes, flush with both side edges |
+| Short rows | 7 rows of **13** hexes, inset half a hex at each side |
+| Total | **203 hexes** |
+| Proportions | 14 hex-widths wide by about 13.3 tall, so nearly square |
+
+That is a 14-column "odd-r" offset grid with the last hex of every short row
+removed. `State.createBoard` builds a full rectangle today, so M1 adds a
+`shortRows` option rather than listing 7 hexes to delete.
+
+A second count agrees. The publisher's printable copy of the starter map
+(its "enrich gameplay" downloads, A4 and Letter) shows the same 203 hexes
+turned 90 degrees, as flat-top columns alternating 14 and 13. Both print
+sizes tile to the same **855 by 740 mm** sheet, which implies 1:1 scale. On
+that sheet:
+
+| Property | Value |
+| --- | --- |
+| Hex size | About **48.3 mm across the flats**, 55.7 mm point to point |
+| Hex field | About 644 by 679 mm; the Timeline track is printed beside it |
+| Format | One folded paper sheet with separate paper terrain |
+
+These are measured from the PDF, not stated anywhere. In world units, one hex
+across the flats stays 1 unit (D3), so the board is about 14 by 13.3 units.
+
+Only the grid comes from the illustration. The terrain, Bases, Garrisons and
+Objectives on it are the publisher's scenario layout and stay out of this
+project, which places its own. The renderer is the same either way; the scenario file
 changes. Hex count and map size come from the rulebook, never from a scan or
 photo of a published map. The terrain layout on it stays our own, so no
 published map layout is copied.
@@ -362,7 +396,7 @@ it must land before M2 relies on the AI for its e2e game.
 | 2 | Redeployment | scenario-gated | **Universal and mandatory.** Every deployment, first or after defeat, is from the side's Base hex or adjacent to its Carrier's middle hex. | Engine (see Deployment below) |
 | 3 | LoS on a hex boundary | `permissive` | **The acting player chooses** which of the two hexes counts. | Equals `permissive` for an attacker; a new mode for other ranged effects |
 | 4 | Unit damage reduction | none | **None.** Shields prevent 1 damage each, applied after every other reduction. A Shield deactivates when it prevents damage and reactivates at its holder's next activation. Crit effects still apply when Shields stop all the damage. | Confirmed |
-| 5 | Objective VP | 1 | **Set by each scenario**, scored at the end of each Phase. The rulebook gives no value. A search snippet of the demo scenario gave 5 for the centre and 8 for a flank, unverified. | Config per scenario, then AI re-tune |
+| 5 | Objective VP | 1 | **Set by each scenario**, scored at the end of each Phase. The rulebook gives no value. The publisher's demo scenario uses 4 neutral Objectives, worth 5 VP in the centre and 8 VP on the flanks, with 1 Base and 7 Garrisons a side. | Config per scenario, then AI re-tune |
 | 6 | Terrain catalogue | four kinds and a spare | Elevation; water; debris fields (same as water); impassable (Hover only, never end there); and an accuracy-only interference field (below). | Engine: new kinds, Hover |
 | 7 | Tactics draw | 3 every Phase | 3 at the start, **3 more at the end of Phase 1**; an empty deck stops drawing. | Config; same result in a 2-Phase game |
 
@@ -505,10 +539,10 @@ it:
 
 ### Still unknown
 
-- **The map.** The rulebook gives no hex count, map size or hex size, and no
-  scenario layout. D6 needs those numbers from the starter set's map or
-  scenario sheet.
-- **Objective VP**, which comes only from the scenario sheets.
+- **The map's physical size.** The grid is measured (see D6), but neither
+  rulebook nor play guide gives centimetres or hex size.
+- **The starter scenarios' Objective VP.** Only the demo scenario's values
+  are published. Our scenario sets its own, starting from the demo's 5 and 8.
 - **Turn order.** The body lists Advance, Primary Action, Command and
   Tactics in that order without saying they may be reordered. The play guide
   says any order, and the 2026-10-30 glossary's new Activation entry leans the same
