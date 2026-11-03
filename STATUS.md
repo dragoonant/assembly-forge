@@ -1,6 +1,6 @@
 # STATUS (rewrite, don't append)
 
-**2026-11-03: M0 scaffold done.**
+**2026-11-03: M0 scaffold done and live at https://dragoonant.github.io/assembly-forge/. M1 started.**
 
 ## What exists
 - Vite + React 19 + TypeScript + React Three Fiber project, deploying `main` to GitHub Pages under `/assembly-forge/`.
@@ -11,12 +11,16 @@
 - The camera from Three Kingdoms Tactics (pan, twist, pinch, wheel zoom to cursor, Q / E, R to reset, 8 px tap rule), fitted to
   the hex board by `src/client/board/CameraRig.tsx`.
 
+- M1, first step: the rules config follows the 2026-10-30 rulebook for Phases (two), the Tactics draw, and the defensive lockout
+  (off). `State.createBoard` has a `shortRows` option that builds the 203-hex starter grid; no scenario uses it yet.
+
 ## Verified (2026-11-03)
 - `npm run typecheck`: clean.
-- `npm test`: 165 engine tests and 18 unit tests (13 ported camera tests, 5 hex layout tests) pass.
+- `npm test`: 168 engine tests and 18 unit tests (13 ported camera tests, 5 hex layout tests) pass.
 - `npm run build`: clean.
 - `npm run e2e`: the smoke test passes in headless Chromium (zero console errors, 77 hexes and 6 units, the canvas draws, zoom and
   reset work). Screenshots `e2e-out/m0-overview.png` and `e2e-out/m0-close.png` were looked at.
+- The Pages deploy succeeded, and the live page loads in headless Chromium with zero console errors and draws the board.
 
 ## Not verified / known gaps
 - Nothing is playable yet: no HUD, no selection, no moves. That is M2.
@@ -25,4 +29,5 @@
 - The `three` chunk is bundled with `@react-three` (about 920 kB, 246 kB gzipped); splitting it is a later tidy-up.
 
 ## Next
-M1, rules reconciliation, per PLAN.md §4 and §6.
+M1 continues with the engine rewrites in PLAN.md §4: deployment from Reserve and Bases first (it changes every game's opening and
+the scenario), then engagement, objective control, line of sight and terrain.
