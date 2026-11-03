@@ -18,6 +18,8 @@ export const viewApi = {
   reset: (): void => {},
   setView: (_p: Partial<View>): void => {},
   camera: (): CameraReadout | null => null,
+  /** Slow orbit of the board, for the game-over view. */
+  orbit: (_on: boolean): void => {},
   /** World point to client pixels, for tests that click a hex. */
   project: (_x: number, _y: number, _z: number): { x: number; y: number } | null => null,
 }

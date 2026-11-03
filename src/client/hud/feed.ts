@@ -37,7 +37,8 @@ export function describe(s: GameState, e: LogEntry): string | null {
     case 'tactics':
       return sideName(e.side) + ' plays ' + Text.tacticsName(e.cid) + '.'
     case 'ability':
-      return who(s, e.uid) + ' uses ' + Text.abilityName(e.aid) + '.'
+      // a Tactics card resolves through the ability system with no ability id; the card has its own line
+      return e.aid ? who(s, e.uid) + ' uses ' + Text.abilityName(e.aid) + '.' : null
     case 'collision':
       return who(s, e.uid) + ' is knocked into something.'
     case 'game_over':

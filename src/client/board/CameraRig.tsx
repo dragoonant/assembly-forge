@@ -108,6 +108,9 @@ export function CameraRig({ frame, surface }: { frame: Frame; surface: (x: numbe
       const c = camera.position
       return { x: c.x, y: c.y, z: c.z, tx: v.x, tz: v.z, az: v.az, zoom: v.zoom, tilt: v.tilt, dist: distFor(v.zoom, ctl.fit.overview) }
     }
+    viewApi.orbit = (on) => {
+      ctl.autoRotate = on
+    }
     viewApi.project = (x, y, z) => {
       camera.updateMatrixWorld(true)
       const v = new Vector3(x, y, z).project(camera)

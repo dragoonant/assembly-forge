@@ -2,6 +2,7 @@
 // which screen is up). Components read it with `useGame`, and the controller in game.ts is the only writer of `game`.
 import { create } from 'zustand'
 import type { Axial, GameState, LogEntry, Side } from './engine'
+import type { Beat } from './presentation/plan'
 
 export type Screen = 'select' | 'brief' | 'play'
 export type Speed = 'normal' | 'fast' | 'instant'
@@ -34,6 +35,17 @@ export interface GameStore {
   ai: [boolean, boolean]
   /** Bumped on every engine state change, so derived data can memo on it. */
   rev: number
+  /** The blocking animation beat now playing, with its start time (performance.now) and length in ms. */
+  beat: Beat | null
+  beatStart: number
+  beatMs: number
+  /** Non-blocking effects, each with the time it was born. */
+  bursts: { id: number; at: Axial; colour: string; born: number }[]
+  wrecks: { id: number; defId: string; side: Side; at: Axial; born: number }[]
+  floats: { id: number; at: Axial; text: string; colour: string; born: number }[]
+  scorches: { id: number; at: Axial; phase: number; round: number }[]
+  banner: { text: string; born: number } | null
+  muted: boolean
 }
 
 export const HUMAN: Side = 0
@@ -52,6 +64,15 @@ export const useGame = create<GameStore>(() => ({
   speed: 'normal',
   ai: [false, true],
   rev: 0,
+  beat: null,
+  beatStart: 0,
+  beatMs: 0,
+  bursts: [],
+  wrecks: [],
+  floats: [],
+  scorches: [],
+  banner: null,
+  muted: false,
 }))
 
 export const getStore = useGame.getState

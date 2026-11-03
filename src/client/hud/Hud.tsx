@@ -24,6 +24,7 @@ import { humanTurn, newGame, setSpeed, take } from '../game'
 import { setStore, useGame, type Speed } from '../store'
 import { viewApi } from '../board/viewApi'
 import { describe } from './feed'
+import { setMuted } from '../audio/sound'
 
 const SIDE_CLASS = ['s0', 's1'] as const
 
@@ -69,11 +70,27 @@ function TopBar({ game }: { game: GameState }) {
             {s === 'normal' ? '1×' : s === 'fast' ? '3×' : '»'}
           </button>
         ))}
+        <MuteButton />
         <button data-testid="reset-view" onClick={() => viewApi.reset()} title="Reset view (R)">⌖</button>
         <button onClick={newGame} title={UI.newGame}>↺</button>
       </div>
     </header>
   )
+}
+
+function MuteButton() {
+  const muted = useGame((s) => s.muted)
+  return (
+    <button onClick={() => setMuted(!muted)} title={muted ? 'Sound off' : 'Sound on'}>
+      {muted ? '🔇' : '🔊'}
+    </button>
+  )
+}
+
+function Banner() {
+  const banner = useGame((s) => s.banner)
+  if (!banner) return null
+  return <div className="banner" key={banner.born} data-testid="banner">{banner.text}</div>
 }
 
 // --- the Timeline --------------------------------------------------------------------------------------------------------
@@ -354,6 +371,7 @@ export function Hud() {
       </div>
       <HexInfo game={game} />
       <Feed game={game} />
+      <Banner />
       {isTerminal(game) && <GameOver game={game} />}
     </>
   )

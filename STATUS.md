@@ -1,6 +1,6 @@
 # STATUS (rewrite, don't append)
 
-**2026-11-03: M0, M1 and M2 done: the game is playable in 3D. Live at https://dragoonant.github.io/assembly-forge/. M3 (animation) next.**
+**2026-11-03: M0 to M3 done: the game is playable and animated in 3D. Live at https://dragoonant.github.io/assembly-forge/. M4 (the six machines) is next, with the owner.**
 
 ## What exists
 - Vite + React 19 + TypeScript + React Three Fiber, deploying `main` to GitHub Pages under `/assembly-forge/`.
@@ -19,25 +19,35 @@
 - The HUD: top bar (score, Phase and round, opponent speed, reset view, new game), the Timeline column, the action column,
   the Tactics hand, the unit card, the dice panel, a feed of what just happened, and the game-over panel. Phones get strips
   instead of columns.
+- The presentation director (`src/client/presentation/`): every action's new log entries become blocking beats (a walk
+  along the engine's path with a hop on level changes, a drop onto the Base on deploy, a turn and a tracer or a lunge for a
+  shot) and effects (hit bursts, a wreck that topples and sinks and leaves a scorch for the round, floating damage, VP, TL
+  and status labels, Phase banners, an orbit at game over). Speeds follow the opponent-speed setting; any click skips.
+- Sound: cues synthesized in the browser (no paid generation), the MegaMechaTactics music bed on the setup screens, and a
+  mute toggle that is remembered.
+- Stand-in machines in each machine's own livery and weapon set, and a model loader (`src/client/board/Figure.tsx`) that
+  swaps in `public/assets/models/<id>.glb` for any id listed in `ENABLED_MODELS`, falling back to the stand-in.
+- `docs/figures.md`: the M4 brief, with the house proportions, the approved Gemini recipe, the six briefs and the pipeline.
 - URL switches: `?ai=both` to spectate, `?ai=none` for hotseat, `?speed=fast|instant`, and `?team=..&foe=..&seed=..&auto=1`.
 
 ## Verified (2026-11-03)
 - `npm run typecheck`: clean.
-- `npm test`: 199 engine tests and 19 unit tests pass (including the controller's attack-behind-the-dice path).
+- `npm test`: 199 engine tests and 22 unit tests pass (the controller's shot-then-dice-then-commit path, the planner).
 - `npm run build`: clean.
-- `npm run e2e`: squad select to deploy to a move with real clicks on the 3D board, and a whole AI-vs-AI game through the
-  client, both with zero console errors. Screenshots of deploy, moves, close zoom, mid-game, game over and a phone layout
-  were looked at.
+- `npm run e2e` (4 tests): squad select to deploy to a move with real clicks on the 3D board; a whole AI-vs-AI game through
+  the client; and beats and effects playing at normal and fast speed. All with zero console errors. Screenshots of deploy,
+  moves, close zoom, mid-game, game over, a phone layout, the Phase banner, a shot and floating labels were looked at.
 - `node tools/ai-selfplay.js 96 pairs=all`: 96 games, no crashes, no forced passes; teams 47/50/53/50%.
 - Mirror matches: 23 to 25 over 48 games, so no seat advantage.
 
 ## Not verified / known gaps
 - No person has played a full game yet; the e2e suite and AI games are the evidence so far.
-- State changes snap: no walking, firing or destruction animation until M3.
+- Sound has not been heard by anyone: the cues are synthesized and only checked to run without errors.
+- Animations were checked by sampled frames in headless Chromium, not watched at speed by a person.
 - Mixed-team games have run about 57% to side 0 across runs with unpaired seeds; re-check with paired seeds.
 - Not checked on a phone or a real GPU; only headless software GL.
-- The `three` chunk is bundled with `@react-three` (about 920 kB, 246 kB gzipped).
+- three, R3F and drei build into one chunk of about 1.3 MB (330 kB gzipped); splitting it is a later tidy-up.
 
 ## Next
-M3 per PLAN.md §4: the presentation director (moves, attacks, destruction and phase banners animated from the engine log)
-and audio cues.
+M4 with the owner: concept images for the six machines from `docs/figures.md`, then Hunyuan Studio on the owner's PC, then
+each GLB dropped into `public/assets/models/` and its id added to `ENABLED_MODELS`.

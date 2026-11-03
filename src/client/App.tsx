@@ -10,6 +10,8 @@ import { frameFor, hexToWorld, topOf } from './board/hexLayout'
 import { viewApi } from './board/viewApi'
 import { cellsOf, isTerminal, legalActions, TEAM_ORDER, type Action, type GameState } from './engine'
 import { deploy, maybeRunAI, take } from './game'
+import { loadMuted, music } from './audio/sound'
+import { skipBeat } from './presentation/director'
 import { Dice } from './hud/Dice'
 import { Hud } from './hud/Hud'
 import { Setup } from './hud/Setup'
@@ -25,6 +27,8 @@ declare global {
       take: (a: Action) => void
       over: () => boolean
       busy: () => boolean
+      beat: () => string | null
+      effects: () => { bursts: number; wrecks: number; floats: number; banner: string | null }
       camera: typeof viewApi.camera
       setView: typeof viewApi.setView
       resetView: () => void
@@ -61,6 +65,11 @@ function installHooks(): void {
       return Boolean(g && isTerminal(g))
     },
     busy: () => getStore().busy,
+    beat: () => getStore().beat?.kind ?? null,
+    effects: () => {
+      const s = getStore()
+      return { bursts: s.bursts.length, wrecks: s.wrecks.length, floats: s.floats.length, banner: s.banner?.text ?? null }
+    },
     camera: () => viewApi.camera(),
     setView: (v) => viewApi.setView(v),
     resetView: () => viewApi.reset(),
@@ -78,8 +87,24 @@ function installHooks(): void {
 export function App() {
   useEffect(() => {
     installHooks()
+    loadMuted()
     readParams()
     maybeRunAI()
+    // any click while an animation beat is playing skips to its end
+    const onDown = (): void => {
+      if (getStore().beat) skipBeat()
+    }
+    // browsers only allow audio after a gesture: start the setup music on the first one
+    const onFirst = (): void => {
+      if (getStore().screen !== 'play') music(true)
+      window.removeEventListener('pointerdown', onFirst)
+    }
+    window.addEventListener('pointerdown', onDown)
+    window.addEventListener('pointerdown', onFirst)
+    return () => {
+      window.removeEventListener('pointerdown', onDown)
+      window.removeEventListener('pointerdown', onFirst)
+    }
   }, [])
   return (
     <div className="app">

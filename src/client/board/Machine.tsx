@@ -8,16 +8,18 @@ import { Billboard } from '@react-three/drei'
 import { useFrame, type ThreeEvent } from '@react-three/fiber'
 import { useRef } from 'react'
 import type { Group, Mesh, MeshBasicMaterial } from 'three'
+import { Figure } from './Figure'
 
 export const SIDE_COLOUR = ['#c8463a', '#3a78c8'] as const
-const BODY = '#8d939c'
 const DARK = '#3b4048'
-const VISOR = '#ffcf6a'
 
 /** Total height of a machine in world units (one hex is 1 across the flats). */
 export const MACHINE_HEIGHT = 1.1
 
 interface Build {
+  /** The machine's own livery (docs/figures.md); side identity is the ring and the shoulders. */
+  body: string
+  visor: string
   /** Overall bulk multiplier on widths. */
   bulk: number
   /** Primary weapon: barrel length and thickness, or a melee head. */
@@ -31,12 +33,18 @@ interface Build {
 
 /** One build per archetype, keyed by definition id. Our own designs; names live in names.js. */
 const BUILDS: Record<string, Build> = {
-  u01: { bulk: 1.0, gun: { len: 0.42, r: 0.035 }, shield: true },
-  u02: { bulk: 0.88, gun: { len: 0.3, r: 0.03 }, melee: { len: 0.5, w: 0.05 } },
-  u03: { bulk: 0.86, gun: { len: 0.78, r: 0.045 } },
-  u04: { bulk: 1.08, gun: { len: 0.34, r: 0.05 }, melee: { len: 0.22, w: 0.12 } },
-  u05: { bulk: 1.16, gun: { len: 0.26, r: 0.03 }, melee: { len: 0.62, w: 0.14 } },
-  u06: { bulk: 1.04, gun: { len: 0.3, r: 0.035 }, mortar: true },
+  // rescue frame, safety orange and slate: rivet gun, big shoulder harpoon launcher
+  u01: { body: '#b8662e', visor: '#ffd27a', bulk: 1.0, gun: { len: 0.5, r: 0.05 } },
+  // skirmisher, pale teal and bone: dart pod, long two-handed beam glaive
+  u02: { body: '#7fb3ab', visor: '#d8fff7', bulk: 0.88, gun: { len: 0.22, r: 0.03 }, melee: { len: 0.62, w: 0.05 } },
+  // artillery, pale gold and white: chest emitter, enormous dorsal beam cannon
+  u03: { body: '#cdb873', visor: '#ff7ad8', bulk: 0.86, gun: { len: 0.82, r: 0.055 } },
+  // close assault, deep red and black: wrist hook, two-handed barbed lance
+  u04: { body: '#6e2327', visor: '#7dff9a', bulk: 1.08, gun: { len: 0.2, r: 0.04 }, melee: { len: 0.7, w: 0.06 } },
+  // salvage frame, rust brown: scrap pistol, wrecking claw
+  u05: { body: '#7a4a2c', visor: '#ff8a3c', bulk: 1.16, gun: { len: 0.2, r: 0.03 }, melee: { len: 0.32, w: 0.2 } },
+  // fortress, deep blue and bronze: shield wall, pepperbox, shoulder mortar
+  u06: { body: '#2f4a72', visor: '#e0b060', bulk: 1.04, gun: { len: 0.24, r: 0.04 }, mortar: true, shield: true },
 }
 
 function Box({ p, s, c, emissive }: { p: [number, number, number]; s: [number, number, number]; c: string; emissive?: string }) {
@@ -49,7 +57,7 @@ function Box({ p, s, c, emissive }: { p: [number, number, number]; s: [number, n
 }
 
 /** The figure itself, facing +z, feet at y = 0. */
-function Rig({ defId, side }: { defId: string; side: 0 | 1 }) {
+export function Rig({ defId, side }: { defId: string; side: 0 | 1 }) {
   const b = BUILDS[defId] ?? BUILDS.u01!
   const accent = SIDE_COLOUR[side]
   const head = MACHINE_HEIGHT / 2.8 // about 0.39
@@ -66,24 +74,24 @@ function Rig({ defId, side }: { defId: string; side: 0 | 1 }) {
       {/* legs: short and heavy, wide stance, big feet */}
       {[-1, 1].map((sx) => (
         <group key={sx} position={[sx * shoulderW * 0.26, 0, 0]}>
-          <Box p={[0, legH * 0.5, 0]} s={[0.13 * b.bulk, legH, 0.15 * b.bulk]} c={BODY} />
+          <Box p={[0, legH * 0.5, 0]} s={[0.13 * b.bulk, legH, 0.15 * b.bulk]} c={b.body} />
           <Box p={[0, 0.035, 0.04]} s={[0.17 * b.bulk, 0.07, 0.26 * b.bulk]} c={DARK} />
         </group>
       ))}
       <Box p={[0, legH + pelvis / 2, 0]} s={[shoulderW * 0.6, pelvis + 0.02, 0.2 * b.bulk]} c={DARK} />
       {/* deep chest with a side-colour plate */}
-      <Box p={[0, torsoY, 0]} s={[shoulderW * 0.72, torsoH, 0.3 * b.bulk]} c={BODY} />
+      <Box p={[0, torsoY, 0]} s={[shoulderW * 0.72, torsoH, 0.3 * b.bulk]} c={b.body} />
       <Box p={[0, torsoY + torsoH * 0.12, 0.155 * b.bulk]} s={[shoulderW * 0.4, torsoH * 0.42, 0.02]} c={accent} />
       {/* broad armoured shoulders in the side colour */}
       {[-1, 1].map((sx) => (
         <Box key={sx} p={[sx * shoulderW * 0.5, legH + pelvis + torsoH * 0.88, 0]} s={[0.2 * b.bulk, 0.14, 0.26 * b.bulk]} c={accent} />
       ))}
       {/* sensor head with a visor, a third of the height */}
-      <Box p={[0, headY, 0]} s={[headW, head * 0.62, headW * 0.95]} c={BODY} />
-      <Box p={[0, headY + head * 0.04, headW * 0.48]} s={[headW * 0.78, head * 0.14, 0.02]} c={DARK} emissive={VISOR} />
+      <Box p={[0, headY, 0]} s={[headW, head * 0.62, headW * 0.95]} c={b.body} />
+      <Box p={[0, headY + head * 0.04, headW * 0.48]} s={[headW * 0.78, head * 0.14, 0.02]} c={DARK} emissive={b.visor} />
       {/* arms */}
       {[-1, 1].map((sx) => (
-        <Box key={sx} p={[sx * shoulderW * 0.56, armY - 0.06, 0.02]} s={[0.1 * b.bulk, torsoH * 0.9, 0.12 * b.bulk]} c={BODY} />
+        <Box key={sx} p={[sx * shoulderW * 0.56, armY - 0.06, 0.02]} s={[0.1 * b.bulk, torsoH * 0.9, 0.12 * b.bulk]} c={b.body} />
       ))}
       {/* the main weapon, right arm, oversized */}
       <mesh position={[shoulderW * 0.58, armY - 0.14, b.gun.len / 2 + 0.06]} rotation={[Math.PI / 2, 0, 0]} castShadow>
@@ -102,6 +110,11 @@ function Rig({ defId, side }: { defId: string; side: 0 | 1 }) {
       )}
     </group>
   )
+}
+
+/** The rig's resting yaw: side 0 sits at the left edge and faces +x, side 1 faces -x. */
+export function sideFacing(side: 0 | 1): number {
+  return side === 0 ? Math.PI / 2 : -Math.PI / 2
 }
 
 export interface MachineProps {
@@ -131,8 +144,7 @@ export function Machine(p: MachineProps) {
       ;(m.material as MeshBasicMaterial).opacity = 0.35 + 0.55 * t
     }
   })
-  // side 0 sits at the left edge and faces +x; side 1 faces -x
-  const facing = p.side === 0 ? Math.PI / 2 : -Math.PI / 2
+  const facing = sideFacing(p.side)
   const frac = Math.max(0, p.hp / p.maxHp)
   return (
     <group ref={group} position={p.position} name={`unit-${p.uid}`}
@@ -163,7 +175,7 @@ export function Machine(p: MachineProps) {
         </mesh>
       )}
       <group rotation={[0, facing, 0]}>
-        <Rig defId={p.defId} side={p.side} />
+        <Figure defId={p.defId} side={p.side} />
       </group>
       {/* an invisible hit capsule sized to the machine, so a click lands on it rather than the hex behind */}
       <mesh position={[0, MACHINE_HEIGHT / 2, 0]} visible={false}>

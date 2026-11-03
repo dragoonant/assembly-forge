@@ -2,7 +2,7 @@
 
 **Status: approved direction, 2026-11-03.** Nothing below is built. The owner
 settled D1, D2 and D5 to D10, and the card portraits, on 2026-11-03.
-M0 (scaffold), M1 (rules) and M2 (playable board) are built; see STATUS.md.
+M0 (scaffold), M1 (rules), M2 (playable board) and M3 (presentation) are built; M4 waits on the owner. See STATUS.md.
 
 Assembly Forge is the 3D successor to MegaMechaTactics. It keeps that game's
 rules engine, roster, Tactics deck and AI, replaces the SVG hex map with a 3D
@@ -317,8 +317,10 @@ instant; any click skips to the end of the current entry.
 | `round`, `phase`, `phase_end` | Banner across the top; the VP tally animates. |
 | `game_over` | Camera orbits the winner's survivors; result panel. |
 
-Audio: cues from the log `sound` tags and entry types, one music bed, both from
-the existing `assets/audio` at the existing mix levels.
+Audio: cues keyed by log entry type, synthesized in the browser for now
+(MegaMechaTactics shipped no recorded cues and generating them spends the
+owner's audio credits), plus the one existing music bed, at the existing mix
+levels.
 
 Gate: a scripted sequence (move, attack, kill, phase end) captured headless at
 all three speeds and reviewed; the e2e game still completes at instant speed.

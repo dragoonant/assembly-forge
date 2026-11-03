@@ -10,7 +10,8 @@ export default defineConfig(({ mode }) => ({
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
   },
   build: {
-    chunkSizeWarningLimit: 1200,
+    // three, R3F and drei land in one chunk (about 1.3 MB, 330 kB gzipped); splitting it is a known tidy-up in STATUS.md
+    chunkSizeWarningLimit: 1600,
     rollupOptions: {
       output: {
         manualChunks(id: string) {

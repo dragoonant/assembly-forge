@@ -13,6 +13,7 @@ import { CameraRig } from './CameraRig'
 import { isTap } from './gesture'
 import { HEX_SIZE, frameFor, hexToWorld, topOf, worldToHex, type Cell, type Frame } from './hexLayout'
 import { Machine, SIDE_COLOUR } from './Machine'
+import { DeployGhost, Effects, Tracer, UnitMover, type WorldOf } from './Motion'
 
 /** Placeholder terrain colours on gunmetal, ahead of the hangar-deck skin (PLAN.md D5, M5). */
 const TERRAIN_COLOUR: Record<string, string> = {
@@ -230,6 +231,7 @@ function Scene() {
   const hoverHex = useGame((s) => s.hoverHex)
   const busy = useGame((s) => s.busy)
   const ai = useGame((s) => s.ai)
+  const beat = useGame((s) => s.beat)
 
   // The board never changes shape during a game, so the cells (and the camera frame built from them) are keyed on the
   // match, not on the state: every apply() returns a new state object, and a frame rebuilt on each one would make the
@@ -251,6 +253,12 @@ function Scene() {
   }, [cells, frame])
 
   if (!game) return null
+  const worldOf: WorldOf = (h) => {
+    const p = hexToWorld(h, frame)
+    return [p.x, topAt(game, h), p.z]
+  }
+  const shooter = beat && beat.kind === 'shot' ? game.units[beat.uid] : null
+  const deploying = beat && beat.kind === 'deploy' ? game.units[beat.uid] : null
 
   const onPick = (cell: Cell) => {
     const a = actionForHex(af, hexKey(cell), armed)
@@ -289,14 +297,13 @@ function Scene() {
       <Garrisons game={game} frame={frame} shootable={shootHexes} />
       <Pickups game={game} frame={frame} />
       {units.map((u) => {
-        const p = hexToWorld(u.hex!, frame)
         return (
+          <UnitMover key={u.uid} uid={u.uid} side={u.side} home={worldOf(u.hex!)} worldOf={worldOf}>
           <Machine
-            key={u.uid}
             uid={u.uid}
             defId={u.defId}
             side={u.side}
-            position={[p.x, topAt(game, u.hex!), p.z]}
+            position={[0, 0, 0]}
             hp={u.hp}
             maxHp={u.maxHp}
             statuses={u.statuses}
@@ -311,8 +318,12 @@ function Scene() {
             }}
             onHover={(over) => setStore({ hoverUnit: over ? u.uid : null, hoverHex: over ? u.hex : null })}
           />
+          </UnitMover>
         )
       })}
+      {deploying && beat && beat.kind === 'deploy' && <DeployGhost defId={deploying.defId} side={deploying.side} at={beat.at} worldOf={worldOf} />}
+      {shooter?.hex && beat && beat.kind === 'shot' && !beat.melee && <Tracer from={worldOf(shooter.hex)} to={worldOf(beat.to)} />}
+      <Effects worldOf={worldOf} phase={game.phase} round={game.round} />
       <LosLine game={game} frame={frame} armed={armed} hover={hoverHex} />
       <CameraRig frame={frame} surface={surface} />
     </>
