@@ -1,7 +1,12 @@
 /**
  * AI self-play harness.
  *
- *   node tools/ai-selfplay.js [games]
+ *   node tools/ai-selfplay.js [games] [pairs=all] [weight=value ...]
+ *
+ * `pairs=all` cycles through every ordered pairing of the four preset teams, so
+ * each team plays each other team from both seats equally often. That is what
+ * separates a seat advantage (a board or Timeline bias) from a team advantage
+ * (a balance problem): the report then gives wins by seat AND by team.
  *
  * Runs whole matches with both sides driven by the AI and reports what
  * actually happened. This is the engine's real test: random play reaches
@@ -17,6 +22,7 @@ import * as AI from '../src/ai/ai.js';
 import * as Apply from '../src/engine/apply.js';
 import * as State from '../src/engine/state.js';
 import { skirmish } from '../src/content/scenarios/skirmish.js';
+import { TEAM_ORDER } from '../src/content/teams.js';
 
 const games = Number(process.argv[2] || 40);
 
@@ -24,10 +30,18 @@ const games = Number(process.argv[2] || 40);
 // Sweeping a weight over a fixed set of seeds is the only way to tell whether
 // a change helped, so it has to be possible without editing the source.
 const overrides = {};
+let allPairs = false;
 for (let i = 3; i < process.argv.length; i++) {
   const bits = String(process.argv[i]).split('=');
+  if (bits[0] === 'pairs') { allPairs = bits[1] === 'all'; continue; }
   if (bits.length === 2) overrides[bits[0]] = Number(bits[1]);
 }
+const PAIRS = [];
+for (let a = 0; a < TEAM_ORDER.length; a++) {
+  for (let b = 0; b < TEAM_ORDER.length; b++) PAIRS.push([TEAM_ORDER[a], TEAM_ORDER[b]]);
+}
+const byTeam = {};
+for (let i = 0; i < TEAM_ORDER.length; i++) byTeam[TEAM_ORDER[i]] = { games: 0, wins: 0 };
 if (Object.keys(overrides).length) {
   AI.tune(overrides);
   process.stdout.write('tuning: ' + JSON.stringify(overrides) + '\n');
@@ -45,7 +59,10 @@ const totals = {
 const failures = [];
 
 for (let i = 0; i < games; i++) {
-  const spec = skirmish({ seed: 'selfplay-' + i });
+  const pair = allPairs ? PAIRS[i % PAIRS.length] : null;
+  const spec = skirmish(pair
+    ? { seed: 'selfplay-' + i, playerTeam: pair[0], enemyTeam: pair[1] }
+    : { seed: 'selfplay-' + i });
   let result;
   try {
     result = AI.playOut(State.createGame(spec));
@@ -62,6 +79,12 @@ for (let i = 0; i < games; i++) {
   totals.vp[0] += s.players[0].vp;
   totals.vp[1] += s.players[1].vp;
   if (s.winner === null) totals.draws++; else totals.wins[s.winner]++;
+  if (pair && pair[0] !== pair[1]) {
+    for (let side = 0; side < 2; side++) {
+      byTeam[pair[side]].games++;
+      if (s.winner === side) byTeam[pair[side]].wins++;
+    }
+  }
 
   for (let j = 0; j < s.log.length; j++) {
     const e = s.log[j];
@@ -100,6 +123,15 @@ process.stdout.write('  garrisons shot ' + per(totals.garrisonsDestroyed) + '\n'
 process.stdout.write('  objectives     ' + per(totals.objectivesScored) + '\n');
 process.stdout.write('  energize       ' + per(totals.energize) + '   <- should be near zero\n');
 process.stdout.write('  forced passes  ' + per(totals.passes) + '   <- should be zero\n');
+
+if (allPairs) {
+  process.stdout.write('wins by team (mixed pairings only):\n');
+  for (let i = 0; i < TEAM_ORDER.length; i++) {
+    const t = byTeam[TEAM_ORDER[i]];
+    process.stdout.write('  ' + TEAM_ORDER[i] + '  ' + t.wins + ' / ' + t.games +
+      '  (' + Math.round(100 * t.wins / Math.max(1, t.games)) + '%)\n');
+  }
+}
 
 if (failures.length) {
   process.stdout.write('\nfailures:\n');

@@ -464,16 +464,27 @@ export function destroyUnit(state, u, bySide) {
   u.alive = false;
   u.hp = 0;
   state.players[bySide].vp += u.vp;
+  const from = u.hex ? { q: u.hex.q, r: u.hex.r } : null;
 
   const redeploys = canRedeploy(state, u.side);
   if (redeploys) {
     Timeline.push(state.timeline, u.uid, state.rules.destruction.tokenPushRounds, state.rules);
+    // Back to Reserve, repaired: hit points reset and statuses cleared, while Energy and Upgrades
+    // are kept (rulebook 2026-10-30, "Defeated Units"). It redeploys on its next activation.
+    u.inReserve = true;
+    u.hex = null;
+    u.hp = u.maxHp;
+    u.statuses = [];
+    u.shieldSpent = false;
   } else {
     Timeline.remove(state.timeline, u.uid);
   }
 
+  // A unit defeated during its own activation ends that activation at once.
+  if (state.activation && state.activation.uid === u.uid) state.activation.defeated = true;
+
   state.log.push({
-    t: 'destroyed', uid: u.uid, side: u.side, by: bySide, vp: u.vp,
+    t: 'destroyed', uid: u.uid, side: u.side, by: bySide, vp: u.vp, from: from,
     redeploys: redeploys, sound: 'destroy', notice: true
   });
 }

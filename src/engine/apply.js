@@ -129,6 +129,18 @@ export function apply(state, action) {
       break;
     }
 
+    case 'deploy': {
+      // Onto the Base, then the unit acts at once; `legalActions` makes it move off first.
+      const u = State.unit(next, act.uid);
+      u.alive = true;
+      u.inReserve = false;
+      u.hex = { q: canonical.to.q, r: canonical.to.r };
+      act.startHex = { q: u.hex.q, r: u.hex.r };
+      act.deployed = true;
+      next.log.push({ t: 'deploy', uid: u.uid, side: u.side, to: { q: u.hex.q, r: u.hex.r }, sound: 'deploy' });
+      break;
+    }
+
     case 'end_activation':
       endActivation(next);
       break;
@@ -217,7 +229,8 @@ function endActivation(state) {
   // only when the unit has no Primary available at all -- so the token has to
   // be pushed here instead, or the round would never empty and the Timeline
   // would sit on the same unit for ever.
-  if (!act.slots.primary) {
+  // A unit defeated during its own activation has already paid its Timeline penalty.
+  if (!act.slots.primary && !act.defeated) {
     state.log.push({ t: 'no_primary', uid: act.uid });
     spendTimeline(state, act.uid, state.rules.actions.forcedPassTlCost);
   }

@@ -102,17 +102,19 @@ export const SCENARIOS = Object.freeze({
   skirmish: Object.freeze({
     title: 'Contested Crossing',
     situation:
-      'A supply basin between two ridgelines, cut by shallows and broken ' +
-      'ground. Both sides have a garrison stranded in the open and a single ' +
-      'objective marker sits in the middle of the crossing. Neither force is ' +
-      'big enough to hold everything.',
+      'A supply basin with a raised spine of high ground across the middle, ' +
+      'shallow streams on both flanks and wreckage breaking up the firing ' +
+      'lanes. Each side has two garrisons stranded on its flanks, and three ' +
+      'objective markers lie between the lines. Neither force is big enough to ' +
+      'hold everything.',
     goals: Object.freeze([
       'Destroy an enemy machine to score the victory points printed on its card. The bigger the threat, the bigger the bounty.',
       'Rescue your own garrison by ending a Primary Action next to it. Destroy the enemy\'s by landing a single point of damage on it.',
+      'Your machines start off the board and deploy from your base on their first turn. A destroyed machine goes back to reserve, is repaired, and deploys again two rounds later.',
       'Control the objective by having more machines around it than the enemy at the end of a round. Control is banked into points only at the end of a Phase.'
     ]),
     victory:
-      'Three Phases of ten rounds each. Most victory points at the end wins.',
+      'Two Phases of ten rounds each. Most victory points at the end wins.',
     warning:
       'Your Timeline token moves every time you take a Primary Action, and the ' +
       'heavier the action the longer until you act again. Fighting is not free.'

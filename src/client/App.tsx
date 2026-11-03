@@ -13,7 +13,8 @@ declare global {
 export function App() {
   const game = useMemo(() => newSkirmish('m0'), [])
   const cells = useMemo(() => cellsOf(game), [game])
-  const units = useMemo<BoardUnit[]>(() => livingUnits(game).map((u) => ({ uid: u.uid, side: u.side, hex: u.hex })), [game])
+  // living units are the ones on the battlefield; a unit in Reserve has no hex and is not drawn
+  const units = useMemo<BoardUnit[]>(() => livingUnits(game).filter((u) => u.hex).map((u) => ({ uid: u.uid, side: u.side, hex: u.hex! })), [game])
 
   // test hooks for the e2e suite and headless screenshots
   window.__game = {
@@ -27,7 +28,7 @@ export function App() {
 
   return (
     <div className="app">
-      <BoardCanvas cells={cells} units={units} />
+      <BoardCanvas cells={cells} units={units} bases={game.bases} />
       <header className="topbar">
         <h1>{UI.title}</h1>
         <button className="reset" data-testid="reset-view" onClick={() => viewApi.reset()} title="Reset view (R)">

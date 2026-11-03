@@ -17,41 +17,76 @@ import * as Tactics from '../tactics.js';
 import * as Teams from '../teams.js';
 import * as Units from '../units.js';
 
-const COLS = 11;
-const ROWS = 7;
+/**
+ * The retail starter board's grid: 14 columns by 15 rows of pointy-top hexes,
+ * odd rows one hex shorter and inset half a hex at each end, 203 hexes in all
+ * (PLAN.md D6). Only the grid is the publisher's; everything placed on it here
+ * is this project's own layout.
+ *
+ * The players sit at the left and right edges. The layout is point-symmetric
+ * about the centre hex, so neither side has a better board: every feature on
+ * side 0's half is mirrored onto side 1's by `mirror`.
+ */
+const COLS = 14;
+const ROWS = 15;
 
-/** `[col, row]` -> `{terrain, elevation}`. */
-const TERRAIN = [
-  [[4, 2], { elevation: 1 }],
-  [[4, 3], { elevation: 1 }],
-  [[4, 4], { elevation: 1 }],
-  [[6, 2], { elevation: 1 }],
-  [[6, 4], { elevation: 1 }],
-  [[5, 0], { terrain: 'water' }],
-  [[5, 1], { terrain: 'water' }],
-  [[5, 5], { terrain: 'water' }],
-  [[5, 6], { terrain: 'water' }],
-  [[2, 3], { terrain: 'rough' }],
+/** Hexes in a row: long rows are 14, short (odd) rows 13. */
+function rowLength(row) {
+  return row & 1 ? COLS - 1 : COLS;
+}
+
+/** The point opposite `[col, row]` through the centre of the board. */
+function mirror(pair) {
+  const row = ROWS - 1 - pair[1];
+  return [rowLength(row) - 1 - pair[0], row];
+}
+
+/**
+ * Side 0's half of the terrain, `[col, row]` -> `{terrain, elevation}`. Each
+ * entry is mirrored onto the other half; the centre hex (6, 7) mirrors onto
+ * itself.
+ *
+ *   - A raised spine across the middle, two levels at the centre, which is the
+ *     high ground both sides want and the objective everyone has to contest.
+ *   - A shallow stream on each flank that slows anything crossing it.
+ *   - Broken ground and two wreck stacks that break up long firing lanes.
+ */
+const HALF_TERRAIN = [
+  [[6, 7], { elevation: 2 }],
+  [[5, 7], { elevation: 1 }],
+  [[6, 6], { elevation: 1 }],
+  [[5, 8], { elevation: 1 }],
+  [[4, 5], { elevation: 1 }],
+  [[3, 2], { terrain: 'water' }],
+  [[3, 3], { terrain: 'water' }],
+  [[4, 4], { terrain: 'water' }],
+  [[2, 9], { terrain: 'rough' }],
+  [[3, 10], { terrain: 'rough' }],
   [[8, 3], { terrain: 'rough' }],
-  [[3, 0], { terrain: 'blocked' }],
-  [[7, 6], { terrain: 'blocked' }]
+  [[5, 11], { terrain: 'blocked' }],
+  [[9, 5], { terrain: 'blocked' }]
 ];
 
-/**
- * Three a side, drawn from the roster in `src/content/units.js`. Stat lines,
- * weapons and crit effects all come from the definition -- nothing is restated
- * here, so a balance change lands in one place.
- *
- * The split gives each side one durable machine, one long threat and one
- * closer, so neither squad is strictly better at anything.
- */
-/**
- * Deployment hexes, three a side. Which machine stands on which is decided at
- * squad select; only the positions are fixed here.
- */
-const DEPLOY = [
-  [[0, 1], [0, 3], [0, 5]],
-  [[10, 1], [10, 3], [10, 5]]
+function terrainLayout() {
+  const out = [];
+  const seen = {};
+  for (let i = 0; i < HALF_TERRAIN.length; i++) {
+    const pair = HALF_TERRAIN[i][0];
+    const pairs = [pair, mirror(pair)];
+    for (let j = 0; j < pairs.length; j++) {
+      const k = pairs[j][0] + ',' + pairs[j][1];
+      if (seen[k]) continue;
+      seen[k] = true;
+      out.push([pairs[j], HALF_TERRAIN[i][1]]);
+    }
+  }
+  return out;
+}
+
+/** One Base per side, in the middle of each player's edge. Units deploy from it. */
+const BASES = [
+  { bid: 'base0', side: 0, at: [0, 7] },
+  { bid: 'base1', side: 1, at: mirror([0, 7]) }
 ];
 
 /** Used when nobody has chosen — the two doctrines that were the old fixed sides. */
@@ -81,18 +116,39 @@ export function squadsFor(playerTeam, enemyTeam) {
   return [Teams.team(a).units.slice(), Teams.team(b).units.slice()];
 }
 
+/**
+ * Two Garrisons per side, out on the flanks of each player's own half: close
+ * enough to Rescue early, exposed enough that the enemy can reach them.
+ */
 const GARRISONS = [
-  { gid: 'g1', side: 0, at: [2, 1] },
-  { gid: 'g2', side: 1, at: [8, 5] }
+  { gid: 'g1', side: 0, at: [3, 1] },
+  { gid: 'g2', side: 0, at: [2, 12] },
+  { gid: 'g3', side: 1, at: mirror([3, 1]) },
+  { gid: 'g4', side: 1, at: mirror([2, 12]) }
 ];
 
+/**
+ * Three neutral Objectives, scored at the end of each Phase by whoever controls
+ * them: the high centre is worth the most, the two flanks less. Our own values;
+ * the published demo scenario's numbers are not used.
+ */
 const OBJECTIVES = [
-  { oid: 'o1', at: [5, 3], vp: 2 }
+  { oid: 'o1', at: [6, 7], vp: 6 },
+  { oid: 'o2', at: [6, 2], vp: 4 },
+  { oid: 'o3', at: mirror([6, 2]), vp: 4 }
 ];
 
 function axial(pair) {
   return Hex.fromOffset(pair[0], pair[1]);
 }
+
+/** Exported for tests: the layout's own parts, as axial hexes. */
+export const LAYOUT = Object.freeze({
+  cols: COLS,
+  rows: ROWS,
+  bases: BASES.map(function (b) { return { bid: b.bid, side: b.side, hex: axial(b.at) }; }),
+  mirror: mirror
+});
 
 /**
  * @param {Object} [opts] `{seed, rules, playerTeam, enemyTeam}` — team ids from
@@ -102,8 +158,9 @@ function axial(pair) {
 export function skirmish(opts) {
   const o = opts || {};
   const hexes = {};
-  for (let i = 0; i < TERRAIN.length; i++) {
-    hexes[Hex.key(axial(TERRAIN[i][0]))] = TERRAIN[i][1];
+  const terrain = terrainLayout();
+  for (let i = 0; i < terrain.length; i++) {
+    hexes[Hex.key(axial(terrain[i][0]))] = terrain[i][1];
   }
 
   const squads = squadsFor(o.playerTeam, o.enemyTeam);
@@ -115,7 +172,8 @@ export function skirmish(opts) {
     for (let i = 0; i < squads[side].length; i++) {
       const defId = squads[side][i];
       const uid = (side === 0 ? 'a' : 'b') + (i + 1);
-      units.push(Units.instance(uid, defId, /** @type {0|1} */ (side), axial(DEPLOY[side][i])));
+      // No hex: every machine starts in Reserve and deploys from its Base.
+      units.push(Units.instance(uid, defId, /** @type {0|1} */ (side), null));
       defs.push(Units.def(defId));
     }
     // Each side gets the deck its own squad qualifies for, so the two decks
@@ -129,7 +187,8 @@ export function skirmish(opts) {
     id: 'skirmish',
     seed: o.seed === undefined ? 'skirmish' : o.seed,
     rules: o.rules,
-    board: { cols: COLS, rows: ROWS, hexes: hexes },
+    board: { cols: COLS, rows: ROWS, shortRows: true, hexes: hexes },
+    bases: LAYOUT.bases,
     units: units,
     tactics: decks,
     garrisons: GARRISONS.map(function (g) {

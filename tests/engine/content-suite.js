@@ -20,6 +20,9 @@ import * as Effects from '../../src/engine/effects.js';
 import * as Names from '../../src/content/names.js';
 import * as Rules from '../../src/engine/rules.js';
 import * as Units from '../../src/content/units.js';
+import * as Hex from '../../src/engine/hex.js';
+import * as State from '../../src/engine/state.js';
+import * as Skirmish from '../../src/content/scenarios/skirmish.js';
 
 /**
  * Every rule a generated sentence has to satisfy.
@@ -187,5 +190,52 @@ T.suite('content text', function () {
 
   T.test('an unknown condition is loud too', function () {
     T.throws(function () { AbilityText.conditionPhrase({ phaseOfTheMoon: 3 }); });
+  });
+});
+
+// --- The scenario on the starter grid ---------------------------------------
+
+T.suite('scenario layout', function () {
+  const spec = Skirmish.skirmish({ seed: 'layout' });
+  const s = State.createGame(spec);
+
+  T.test('it is the 203-hex starter grid', function () {
+    T.eq(Object.keys(s.board.hexes).length, 203);
+  });
+
+  T.test('every machine starts in Reserve and each side has one Base', function () {
+    const ids = Object.keys(s.units);
+    T.eq(ids.length, 6);
+    for (let i = 0; i < ids.length; i++) T.ok(s.units[ids[i]].inReserve, ids[i] + ' in Reserve');
+    T.eq(State.basesOf(s, 0).length, 1);
+    T.eq(State.basesOf(s, 1).length, 1);
+  });
+
+  T.test('the layout is point-symmetric, so neither side has a better board', function () {
+    const L = Skirmish.LAYOUT;
+    const keys = Object.keys(s.board.hexes);
+    for (let i = 0; i < keys.length; i++) {
+      const c = s.board.hexes[keys[i]];
+      const off = Hex.toOffset(c);
+      const m = L.mirror([off.col, off.row]);
+      const other = s.board.hexes[Hex.key(Hex.fromOffset(m[0], m[1]))];
+      T.ok(other, 'mirror of ' + keys[i] + ' is on the board');
+      T.eq(other.terrain, c.terrain, 'terrain mirrors at ' + keys[i]);
+      T.eq(other.elevation, c.elevation, 'elevation mirrors at ' + keys[i]);
+    }
+  });
+
+  T.test('markers and Bases sit on open, passable hexes and never share one', function () {
+    const used = {};
+    const place = function (h, what) {
+      const cell = State.cellAt(s, h);
+      T.ok(cell, what + ' is on the board');
+      T.notOk(s.rules.terrain[cell.terrain].impassable, what + ' is passable');
+      T.notOk(used[Hex.key(h)], what + ' does not share a hex');
+      used[Hex.key(h)] = true;
+    };
+    s.bases.forEach(function (b) { place(b.hex, 'base ' + b.bid); });
+    s.garrisonOrder.forEach(function (g) { place(s.garrisons[g].hex, 'garrison ' + g); });
+    s.objectiveOrder.forEach(function (o) { place(s.objectives[o].hex, 'objective ' + o); });
   });
 });

@@ -67,7 +67,10 @@ export function legalActions(state) {
   // the track when it dies. If one ever is, the ONLY safe answer is an action
   // that clears the round: returning an empty list wedges the scheduler for
   // good, because nothing can then advance the Timeline past this token.
-  if (!u.alive) return [{ type: 'end_activation', uid: u.uid }];
+  if (!u.alive) {
+    if (act.defeated || !u.inReserve) return [{ type: 'end_activation', uid: u.uid }];
+    return reserveActions(state, u, act);
+  }
 
   const out = [];
 
@@ -155,6 +158,16 @@ export function legalActions(state) {
     }
   }
 
+  // A unit standing on a Base must move off it before doing anything else: no unit may end a move
+  // or an activation on a Base, and movement cannot resume once another action has been taken
+  // (rulebook 2026-10-30, "Deploying your Units"). `deployOptions` only offers a deployment that has
+  // a way off, so this list is never empty in play; the end_activation fallback is a wedge guard.
+  if (State.baseAt(state, u.hex) && rules.movement.noEndOnBase) {
+    const off = out.filter(function (a) { return a.type === 'advance' || a.type === 'dash'; });
+    if (!off.length) off.push({ type: 'end_activation', uid: u.uid });
+    return sortActions(off);
+  }
+
   // Ending the activation. The Primary Action is mandatory -- but if the unit
   // has no Primary available at all, holding the whole Timeline hostage to
   // that rule would be worse than letting it pass.
@@ -162,11 +175,72 @@ export function legalActions(state) {
     out.push({ type: 'end_activation', uid: u.uid });
   }
 
+  return sortActions(out);
+}
+
+/**
+ * @param {Action[]} out
+ * @returns {Action[]}
+ */
+function sortActions(out) {
   out.sort(function (a, b) {
     const ka = actionKey(a);
     const kb = actionKey(b);
     return ka < kb ? -1 : ka > kb ? 1 : 0;
   });
+  return out;
+}
+
+/**
+ * What a unit in Reserve may do when its token comes up: deploy onto one of its side's Bases, or,
+ * when no Base offers a way off, Energize and stay in Reserve (rulebook 2026-10-30, "Deploying
+ * your Units"). Once that Primary is spent it may only end the activation.
+ *
+ * Simplification, recorded in PLAN.md: a Base hex occupied by another unit is treated as
+ * unavailable rather than "as though it were empty". No unit may end a move on a Base, so this only
+ * arises after a Push or Pull, which no current content can do onto a Base.
+ *
+ * @param {Object} state
+ * @param {Object} u
+ * @param {Object} act
+ * @returns {Action[]}
+ */
+function reserveActions(state, u, act) {
+  if (act.slots.primary) return [{ type: 'end_activation', uid: u.uid }];
+  const out = deployOptions(state, u.uid).map(function (h) {
+    return { type: 'deploy', uid: u.uid, to: h };
+  });
+  if (!out.length) {
+    if (canEnergize(state, u)) out.push({ type: 'energize', uid: u.uid });
+    else out.push({ type: 'end_activation', uid: u.uid });
+  }
+  return sortActions(out);
+}
+
+/**
+ * The Base hexes a Reserve unit could deploy onto: its side's Bases that are empty and from which it
+ * could then Advance or Dash to a legal hex.
+ *
+ * @param {Object} state
+ * @param {string} uid
+ * @returns {Array<{q: number, r: number}>}
+ */
+export function deployOptions(state, uid) {
+  const u = State.unit(state, uid);
+  const out = [];
+  const bases = State.basesOf(state, u.side);
+  for (let i = 0; i < bases.length; i++) {
+    const h = bases[i].hex;
+    if (State.unitAt(state, h)) continue;
+    // Try the deployment on a scratch copy: put the unit on the Base, then ask the movement search.
+    const probe = State.clone(state);
+    const pu = probe.units[uid];
+    pu.alive = true;
+    pu.inReserve = false;
+    pu.hex = { q: h.q, r: h.r };
+    const reach = Math.max(state.rules.movement.advanceHexes, state.rules.movement.dashHexes);
+    if (movementOptions(probe, uid, reach).length) out.push({ q: h.q, r: h.r });
+  }
   return out;
 }
 
@@ -366,6 +440,10 @@ export function canPassThrough(state, u, h) {
   const g = State.garrisonAt(state, h);
   if (g && g.side !== u.side && state.rules.movement.enemyGarrisonBlocks) return false;
 
+  // Enemy structures, such as Bases, may not be moved through; allied ones may.
+  const b = State.baseAt(state, h);
+  if (b && b.side !== u.side && state.rules.movement.enemyBaseBlocks) return false;
+
   return true;
 }
 
@@ -383,6 +461,7 @@ export function canEndOn(state, u, h) {
   if (other && other.uid !== u.uid && state.rules.movement.onePerHex) return false;
   const g = State.garrisonAt(state, h);
   if (g && !state.rules.movement.endOnFriendly) return false;
+  if (State.baseAt(state, h) && state.rules.movement.noEndOnBase) return false;
   return true;
 }
 

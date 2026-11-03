@@ -13,6 +13,7 @@ import './suite.js';
 import './combat-suite.js';
 import './effects-suite.js';
 import './content-suite.js';
+import './deploy-suite.js';
 import './ai-suite.js';
 
 const summary = T.run(function (r) {

@@ -141,6 +141,12 @@ export const DEFAULTS = {
     /** A unit may not pass through an enemy unit and must detour. */
     passThroughEnemy: false,
 
+    /** Enemy structures such as Bases may not be moved through. Rulebook 2026-10-30, "Moving". */
+    enemyBaseBlocks: true,
+
+    /** No unit may end a move on a Base, so a deployed unit must move off. Rulebook 2026-10-30. */
+    noEndOnBase: true,
+
     /**
      * The sources say enemy *units* block movement and say nothing about
      * enemy Garrisons. We treat a Garrison as a physical object on the board
@@ -317,9 +323,12 @@ export const DEFAULTS = {
     tokenPushRounds: 2,
 
     /**
-     * OPEN QUESTION 2. A destroyed unit reportedly redeploys at an allied base
-     * when its token's round comes round again. Whether that is universal or
-     * something a scenario grants is unresolved.
+     * RESOLVED (rulebook 2026-10-30, "Deploying your Units"): redeployment is
+     * universal and mandatory. Every unit deploys from Reserve onto its side's
+     * Base, at the start and after each defeat. 'scenario' implements exactly
+     * that wherever a Base exists, which every real scenario has; it only
+     * differs for hand-built test positions with no Base, where a defeated
+     * unit's token is removed rather than left to wait for ever.
      *
      *   'scenario' -- allowed only where the scenario provides a base to
      *                 redeploy at, which is the reading that cannot break a
@@ -400,7 +409,7 @@ export const OPEN_QUESTIONS = Object.freeze([
     n: 2,
     question: 'Is redeployment at an allied base universal, or scenario-gated?',
     path: 'destruction.redeploy',
-    decision: 'Scenario-gated.'
+    decision: 'RESOLVED (rulebook 2026-10-30): universal; gated only on a Base existing, which every real scenario has.'
   }),
   Object.freeze({
     n: 3,

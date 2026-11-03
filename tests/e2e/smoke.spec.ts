@@ -14,8 +14,8 @@ test('boots, draws the board, and the camera moves', async ({ page }) => {
   await page.waitForFunction(() => window.__game?.ready === true && window.__game.camera() !== null)
 
   const counts = await page.evaluate(() => ({ cells: window.__game!.cells, units: window.__game!.units }))
-  expect(counts.cells).toBe(77) // the 11 x 7 skirmish board, until M1 brings the 203-hex starter grid
-  expect(counts.units).toBe(6)
+  expect(counts.cells).toBe(203) // the retail starter grid
+  expect(counts.units).toBe(0) // every machine starts in Reserve, off the board
 
   // let the overview settle, then check the canvas actually drew something other than the clear colour
   await page.waitForTimeout(800)

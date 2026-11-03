@@ -73,7 +73,23 @@ function StandIn({ unit, cells }: { unit: BoardUnit; cells: Cell[] }) {
   )
 }
 
-export function BoardCanvas({ cells, units }: { cells: Cell[]; units: BoardUnit[] }) {
+/** A Base: a raised pad in the side's colour, which no machine may stop on. */
+function BasePad({ base, cells }: { base: { side: 0 | 1; hex: { q: number; r: number } }; cells: Cell[] }) {
+  const frame = useMemo(() => frameFor(cells), [cells])
+  const cell = cells.find((c) => c.q === base.hex.q && c.r === base.hex.r)
+  const p = hexToWorld(base.hex, frame)
+  const y = cell ? topOf(cell) : 0
+  return (
+    <group position={[p.x, y, p.z]} name={`base-${base.side}`}>
+      <mesh position={[0, 0.04, 0]} receiveShadow>
+        <cylinderGeometry args={[HEX_SIZE * 0.78, HEX_SIZE * 0.84, 0.08, 6]} />
+        <meshStandardMaterial color={SIDE_COLOUR[base.side]} roughness={0.5} metalness={0.4} emissive={SIDE_COLOUR[base.side]} emissiveIntensity={0.15} />
+      </mesh>
+    </group>
+  )
+}
+
+export function BoardCanvas({ cells, units, bases }: { cells: Cell[]; units: BoardUnit[]; bases: { side: 0 | 1; hex: { q: number; r: number } }[] }) {
   const frame = useMemo(() => frameFor(cells), [cells])
   const surface = useMemo(() => {
     const byKey = new Map(cells.map((c) => [c.q + ',' + c.r, c]))
@@ -94,6 +110,9 @@ export function BoardCanvas({ cells, units }: { cells: Cell[]; units: BoardUnit[
         <meshStandardMaterial color="#17191d" roughness={0.95} />
       </mesh>
       <HexTiles cells={cells} />
+      {bases.map((b, i) => (
+        <BasePad key={i} base={b} cells={cells} />
+      ))}
       {units.map((u) => (
         <StandIn key={u.uid} unit={u} cells={cells} />
       ))}

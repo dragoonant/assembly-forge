@@ -20,16 +20,25 @@ export interface EngineUnit {
   uid: string
   defId: string
   side: Side
-  hex: Axial
+  /** null while the unit is in Reserve, off the board. */
+  hex: Axial | null
   hp: number
   maxHp: number
   alive: boolean
+  inReserve: boolean
+}
+
+export interface EngineBase {
+  bid: string
+  side: Side
+  hex: Axial
 }
 
 export interface GameState {
   board: { hexes: Record<string, EngineCell> }
   units: Record<string, EngineUnit>
   unitOrder: string[]
+  bases: EngineBase[]
   phase: number
   round: number
   log: { t: string; [k: string]: unknown }[]

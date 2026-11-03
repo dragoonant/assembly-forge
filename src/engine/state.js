@@ -35,7 +35,10 @@ import * as Timeline from './timeline.js';
  * @property {number} energy
  * @property {string[]} statuses
  * @property {string[]} upgrades
- * @property {boolean} alive
+ * @property {boolean} alive     on the battlefield. A unit off the board is not alive in this sense.
+ * @property {boolean} inReserve off the board and waiting to deploy from a Base: every unit at the
+ *           start of a game that has Bases, and every unit defeated since (rulebook 2026-10-30,
+ *           "Deploying your Units"). `hex` is null while in Reserve.
  */
 
 /**
@@ -180,6 +183,32 @@ export function terrainAt(state, h) {
 }
 
 // --- Occupancy ---------------------------------------------------------------
+
+/**
+ * The Base on a hex, or null. Bases are structures: no unit may end a move on one, and an enemy
+ * Base blocks movement and line of sight (rulebook 2026-10-30, "Moving", "Line of Sight").
+ * @param {Object} state
+ * @param {?{q: number, r: number}} h
+ * @returns {?Object}
+ */
+export function baseAt(state, h) {
+  if (!h) return null;
+  const bases = state.bases || [];
+  for (let i = 0; i < bases.length; i++) {
+    if (bases[i].hex.q === h.q && bases[i].hex.r === h.r) return bases[i];
+  }
+  return null;
+}
+
+/**
+ * A side's Bases, in declaration order.
+ * @param {Object} state
+ * @param {Side} side
+ * @returns {Object[]}
+ */
+export function basesOf(state, side) {
+  return (state.bases || []).filter(function (b) { return b.side === side; });
+}
 
 /**
  * The living unit standing on a hex, or null.
@@ -429,10 +458,13 @@ function emptyPlayer(side) {
 export function addUnit(state, spec) {
   if (!spec.uid) throw new Error('A unit needs a uid');
   if (state.units[spec.uid]) throw new Error('Duplicate unit uid: ' + spec.uid);
-  if (!onBoard(state, spec.hex)) {
+  // A unit with no hex starts in Reserve and deploys from its side's Base on its first activation.
+  // Tests and hand-built positions still place units directly by giving a hex.
+  const reserve = !spec.hex;
+  if (!reserve && !onBoard(state, spec.hex)) {
     throw new Error('Unit ' + spec.uid + ' placed off the board at ' + Hex.key(spec.hex));
   }
-  if (unitAt(state, spec.hex)) {
+  if (!reserve && unitAt(state, spec.hex)) {
     throw new Error('Two units on ' + Hex.key(spec.hex) + '; one unit per hex');
   }
   const maxHp = spec.hp === undefined ? 10 : spec.hp;
@@ -440,7 +472,7 @@ export function addUnit(state, spec) {
     uid: spec.uid,
     defId: spec.defId === undefined ? spec.uid : spec.defId,
     side: spec.side,
-    hex: { q: spec.hex.q, r: spec.hex.r },
+    hex: reserve ? null : { q: spec.hex.q, r: spec.hex.r },
     hp: maxHp,
     maxHp: maxHp,
     tl: spec.tl === undefined ? 1 : spec.tl,
@@ -468,7 +500,8 @@ export function addUnit(state, spec) {
     abilities: (spec.abilities || []).map(function (a) { return clone(a); }),
     /** The Shield upgrade's charge, spent on damage and refreshed on activation. */
     shieldSpent: false,
-    alive: true
+    alive: !reserve,
+    inReserve: reserve
   };
   if (u.tl < 1) throw new Error('Unit ' + u.uid + ' has a starting Timeline below 1');
   state.units[u.uid] = u;
@@ -575,7 +608,11 @@ export function beginActivation(state, uid, side) {
     slots: { advance: false, primary: null, command: false, tactics: false },
     moved: false,
     movementClosed: false,
-    startHex: { q: u.hex.q, r: u.hex.r },
+    startHex: u.hex ? { q: u.hex.q, r: u.hex.r } : null,
+    /** Set when the unit deploys from Reserve this activation. */
+    deployed: false,
+    /** Set when the unit is defeated during its own activation, which then ends at once. */
+    defeated: false,
     tacticsLocked: locked,
     slowed: slowed,
     /**
