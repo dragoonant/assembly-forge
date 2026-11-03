@@ -137,6 +137,36 @@ T.suite('hex', function () {
 
 // --- Seeded generator --------------------------------------------------------
 
+T.suite('board shape', function () {
+  T.test('the starter board is 15 rows alternating 14 and 13 hexes, 203 in all', function () {
+    const b = State.createBoard({ cols: 14, rows: 15, shortRows: true });
+    T.eq(Object.keys(b.hexes).length, 203);
+    for (let row = 0; row < 15; row++) {
+      let n = 0;
+      const keys = Object.keys(b.hexes);
+      for (let i = 0; i < keys.length; i++) if (b.hexes[keys[i]].r === row) n++;
+      T.eq(n, row % 2 === 0 ? 14 : 13, 'row ' + row);
+    }
+  });
+
+  T.test('a short row is inset half a hex at both ends', function () {
+    const b = State.createBoard({ cols: 14, rows: 15, shortRows: true });
+    // odd-r: row 1 starts half a hex right of row 0, and with its last hex dropped it also ends half a hex short
+    const first0 = Hex.toPixel(Hex.fromOffset(0, 0), 1).x;
+    const first1 = Hex.toPixel(Hex.fromOffset(0, 1), 1).x;
+    const last0 = Hex.toPixel(Hex.fromOffset(13, 0), 1).x;
+    const last1 = Hex.toPixel(Hex.fromOffset(12, 1), 1).x;
+    T.ok(Math.abs(first1 - first0 - Math.sqrt(3) / 2) < 1e-9, 'inset on the left');
+    T.ok(Math.abs(last0 - last1 - Math.sqrt(3) / 2) < 1e-9, 'inset on the right');
+    T.ok(State.onBoard({ board: b }, Hex.fromOffset(13, 0)), 'long row keeps its 14th hex');
+    T.notOk(State.onBoard({ board: b }, Hex.fromOffset(13, 1)), 'short row has no 14th hex');
+  });
+
+  T.test('without shortRows a board stays a full rectangle', function () {
+    T.eq(Object.keys(State.createBoard({ cols: 14, rows: 15 }).hexes).length, 210);
+  });
+});
+
 T.suite('rng', function () {
   T.test('the same seed produces the same sequence', function () {
     const a = sequence(Rng.seedFrom('replay-me'), 20);

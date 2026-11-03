@@ -86,6 +86,10 @@ export function clone(value) {
  * @param {Object} spec
  * @param {number} [spec.cols] rectangular map width, in offset columns
  * @param {number} [spec.rows] rectangular map height, in offset rows
+ * @param {boolean} [spec.shortRows] drop the last hex of every odd row, so odd
+ *        rows sit inset half a hex at both ends. This is the shape of the
+ *        retail starter board: 14 columns by 15 rows, alternating 14 and 13,
+ *        203 hexes in all (measured 2026-11-03; see PLAN.md D6).
  * @param {number} [spec.radius] hex-shaped map radius, as an alternative to cols/rows
  * @param {string} [spec.terrain] default terrain kind, defaults to 'open'
  * @param {Object<string, {terrain?: string, elevation?: number}>} [spec.hexes]
@@ -107,7 +111,8 @@ export function createBoard(spec) {
     const cols = spec.cols === undefined ? 8 : spec.cols;
     const rows = spec.rows === undefined ? 8 : spec.rows;
     for (let row = 0; row < rows; row++) {
-      for (let col = 0; col < cols; col++) {
+      const rowCols = spec.shortRows && (row & 1) ? cols - 1 : cols;
+      for (let col = 0; col < rowCols; col++) {
         const h = Hex.fromOffset(col, row);
         hexes[Hex.key(h)] = { q: h.q, r: h.r, terrain: defaultTerrain, elevation: 0 };
       }
@@ -128,7 +133,8 @@ export function createBoard(spec) {
     shape: {
       radius: spec.radius === undefined ? null : spec.radius,
       cols: spec.cols === undefined ? null : spec.cols,
-      rows: spec.rows === undefined ? null : spec.rows
+      rows: spec.rows === undefined ? null : spec.rows,
+      shortRows: Boolean(spec.shortRows)
     }
   };
 }

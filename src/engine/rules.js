@@ -78,13 +78,11 @@ export const DEFAULTS = {
 
   match: {
     /**
-     * OPEN QUESTION 1. How long is a game? The sources say a scenario
-     * specifies the number of Phases but never quote a number. Three Phases
-     * -- thirty rounds of Timeline -- is roughly the length the published
-     * starter scenarios are described as playing to, and it is what our own
-     * scenario definitions currently assume. Scenarios override it.
+     * Two Phases of ten rounds, twenty rounds in all. Rulebook (2026-10-30),
+     * "Object of the Game" and "Ending a Phase". Scenarios may play longer,
+     * in which case each extra Phase adds three Tactics cards to the deck.
      */
-    phasesPerGame: 3,
+    phasesPerGame: 2,
 
     /** Units per side. The starter format; larger sets go to 5. */
     squadSize: 3
@@ -365,25 +363,23 @@ export const DEFAULTS = {
     openingHand: 3,
 
     /**
-     * OPEN QUESTION 7. The publisher's guide says draw three at the end of the
-     * first Phase; the wiki generalises that to every Phase. We take the
-     * general reading, because a deck of nine that is drawn from once would
-     * leave three cards permanently unreachable in a three-Phase game.
-     * Set `drawOnlyAfterFirstPhase` to restore the narrow reading.
+     * Three more cards at the end of every Phase but the last. Rulebook
+     * (2026-10-30), "Ending a Phase" and "Other Tactics Deck Rules": in the
+     * standard two-Phase game that is one draw, at the end of Phase 1, and
+     * a longer game adds three cards to the deck per extra Phase.
      */
-    drawPerPhase: 3,
+        drawPerPhase: 3,
     drawOnlyAfterFirstPhase: false,
 
     /** One card per unit turn. Unverified. */
     onePerUnitTurn: true,
 
     /**
-     * Playing a card defensively against an attack locks out the next turn's
-     * card. Unverified, and the sources do not say whether "turn" means the
-     * player's next unit activation or that unit's next activation. We lock
-     * the player's next activation, whichever unit it is.
+     * Off. A community wiki described a lockout after playing a card
+     * defensively, but neither issue of the rulebook (2026-08-28, 2026-10-30)
+     * has one. The switch stays so the behaviour can be tested.
      */
-    lockoutAfterDefensivePlay: true
+    lockoutAfterDefensivePlay: false
   }
 };
 
@@ -398,7 +394,7 @@ export const OPEN_QUESTIONS = Object.freeze([
     n: 1,
     question: 'How many Phases does a game last, and is it always scenario-specified?',
     path: 'match.phasesPerGame',
-    decision: 'Three by default; scenarios override.'
+    decision: 'RESOLVED (rulebook 2026-10-30): two Phases; scenarios may play longer.'
   }),
   Object.freeze({
     n: 2,
@@ -434,7 +430,7 @@ export const OPEN_QUESTIONS = Object.freeze([
     n: 7,
     question: 'Whether Tactics draw is 3 per Phase or only after the first.',
     path: 'tactics.drawPerPhase',
-    decision: 'Three every Phase.'
+    decision: 'RESOLVED (rulebook 2026-10-30): three at the start, three more at the end of every Phase but the last.'
   })
 ]);
 
@@ -470,7 +466,7 @@ export const HOUSE_DECISIONS = Object.freeze([
   }),
   Object.freeze({
     path: 'tactics.lockoutAfterDefensivePlay',
-    decision: 'A defensive card locks the player out of their next activation.'
+    decision: 'RESOLVED (rulebook 2026-10-30): no such rule; the lockout is off.'
   }),
   Object.freeze({
     path: 'combat.losBlockers',
