@@ -210,19 +210,27 @@ T.suite('statuses from abilities', function () {
     T.throws(function () { Combat.applyStatus(g, 'b1', 'confused'); });
   });
 
-  T.test('slow costs the unit its next Advance and then clears', function () {
+  T.test('slow makes the next Advance move nothing, then clears', function () {
     const g = F.game({
       units: [F.unit('a1', 'u02', 0, H(0, 0), { tl: 1 }), F.unit('b1', 'u06', 1, H(5, 0), { tl: 9 })]
     });
     State.unit(g, 'a1').statuses.push('slow');
-    // Re-open the activation so the status is consumed by it.
-    const fresh = State.clone(g);
-    fresh.activation = State.beginActivation(fresh, 'a1', 0);
-    T.ok(fresh.activation.slowed, 'the activation knows');
-    T.eq(State.unit(fresh, 'a1').statuses.indexOf('slow'), -1, 'and the status is spent');
-    T.eq(Actions.legalActions(fresh).filter(function (a) {
-      return a.type === 'advance';
-    }).length, 0, 'no Advance available');
+    const advances = Actions.legalActions(g).filter(function (a) { return a.type === 'advance'; });
+    T.eq(advances.length, 1, 'one Advance on offer');
+    T.ok(advances[0].slowed && advances[0].cost === 0, 'and it goes nowhere');
+    T.ok(Actions.legalActions(g).some(function (a) { return a.type === 'dash'; }), 'Dash is unaffected');
+    const after = Apply.apply(g, advances[0]);
+    T.eq(State.unit(after, 'a1').statuses.indexOf('slow'), -1, 'the status is spent');
+    T.ok(Hex.equals(State.unit(after, 'a1').hex, H(0, 0)), 'and the unit has not moved');
+  });
+
+  T.test('a slowed unit that never Advances keeps the status', function () {
+    const g = F.game({
+      units: [F.unit('a1', 'u02', 0, H(0, 0), { tl: 1 }), F.unit('b1', 'u06', 1, H(5, 0), { tl: 9 })]
+    });
+    State.unit(g, 'a1').statuses.push('slow');
+    const s = Apply.apply(Apply.apply(g, { type: 'energize', uid: 'a1' }), { type: 'end_activation', uid: 'a1' });
+    T.ok(State.unit(s, 'a1').statuses.indexOf('slow') !== -1);
   });
 });
 

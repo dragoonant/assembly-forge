@@ -90,6 +90,18 @@ T.suite('combat dice', function () {
     T.eq(a.state, b.state, 'and it advances the generator the same way');
   });
 
+  T.test('disarm lasts for one attack and is then removed', function () {
+    let g = F.game({
+      units: [
+        F.unit('a1', 'u02', 0, H(0, 0), { weapons: [F.SURE_KILL] }),
+        F.unit('b1', 'u06', 1, H(2, 0), { hp: 200 })
+      ]
+    });
+    g.units.a1.statuses.push('disarm');
+    g = Apply.apply(g, { type: 'attack', uid: 'a1', wid: 'surekill', target: { kind: 'unit', id: 'b1' } });
+    T.eq(g.units.a1.statuses.indexOf('disarm'), -1);
+  });
+
   T.test('disarm suppresses crits and rerolls the hits', function () {
     const plain = Combat.rollAttack(999, rules, 8, 0, false);
     const armed = Combat.rollAttack(999, rules, 8, 0, true);
@@ -159,6 +171,41 @@ T.suite('line of sight', function () {
     });
     T.ok(Los.hasLos(withFriend, H(0, 0), H(2, 0), { side: 0, targetUid: 'b1' }),
       'a friendly unit does not, which is the sources\' reading');
+  });
+
+  T.test('from high ground a lower enemy in between can be shot over', function () {
+    const g = F.game({
+      board: F.arena({ hexes: { '0,0': { elevation: 1 } } }),
+      units: [
+        F.unit('a1', 'u02', 0, H(0, 0)),
+        F.unit('x1', 'u04', 1, H(1, 0)),
+        F.unit('b1', 'u06', 1, H(2, 0))
+      ]
+    });
+    T.ok(Los.hasLos(g, H(0, 0), H(2, 0), { side: 0, targetUid: 'b1' }), 'the blocker is below the higher unit');
+  });
+
+  T.test('across a height difference, anything at the higher level blocks', function () {
+    const g = F.game({
+      board: F.arena({ hexes: { '2,0': { elevation: 1 }, '1,0': { elevation: 1 } } }),
+      units: [F.unit('a1', 'u02', 0, H(0, 0)), F.unit('b1', 'u06', 1, H(2, 0))]
+    });
+    T.notOk(Los.hasLos(g, H(0, 0), H(2, 0), { side: 0, targetUid: 'b1' }),
+      'shooting UP at a target behind the lip of its own level');
+  });
+
+  T.test('an objective marker never blocks, an enemy Base on the same level does', function () {
+    const g = F.game({
+      units: [F.unit('a1', 'u02', 0, H(0, 0)), F.unit('b1', 'u06', 1, H(2, 0))],
+      objectives: [{ oid: 'o1', hex: H(1, 0), vp: 2 }]
+    });
+    T.ok(Los.hasLos(g, H(0, 0), H(2, 0), { side: 0, targetUid: 'b1' }), 'objective');
+    const b = F.game({
+      units: [F.unit('a1', 'u02', 0, H(0, 0)), F.unit('b1', 'u06', 1, H(2, 0))],
+      bases: [{ bid: 'x', side: 1, hex: H(1, 0) }, { bid: 'y', side: 0, hex: H(-5, 0) }]
+    });
+    T.notOk(Los.hasLos(b, H(0, 0), H(2, 0), { side: 0, targetUid: 'b1' }), 'enemy Base');
+    T.ok(Los.hasLos(b, H(2, 0), H(0, 0), { side: 1, targetUid: 'a1' }), 'but not for its own side');
   });
 
   T.test('the target itself never blocks its own line', function () {

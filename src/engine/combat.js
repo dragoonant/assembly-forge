@@ -151,13 +151,20 @@ export function accuracyShift(state, attacker, w, tHex, extra) {
   const c = state.rules.combat;
   let shift = w.accuracy || 0;
 
-  const kind = State.terrainAt(state, tHex);
-  if (kind) shift += kind.accuracy;
+  // Terrain: the target's hex and the attacker's own both count (water and debris), and an
+  // interference field applies once against a non-adjacent target if either is inside it.
+  const into = State.terrainAt(state, tHex);
+  const from = State.terrainAt(state, attacker.hex);
+  if (into) shift += into.accuracyInto || 0;
+  if (from) shift += from.accuracyFrom || 0;
+  if (((into && into.field) || (from && from.field)) && Hex.distance(attacker.hex, tHex) > 1) {
+    shift += c.fieldAccuracy;
+  }
 
   const climb = State.elevationAt(state, attacker.hex) - State.elevationAt(state, tHex);
-  shift += climb * c.elevationAccuracyPerLevel;
+  shift += (c.elevationAccuracyFlat ? Math.sign(climb) : climb) * c.elevationAccuracyPerLevel;
 
-  if (attacker.upgrades.indexOf('accuracy') !== -1) shift += 1;
+  shift += State.upgradeCount(attacker, 'accuracy');
   if (attacker.statuses.indexOf('blinded') !== -1) shift -= 1;
 
   shift += Effects.ongoingModifier(state, attacker, 'accuracy');
@@ -181,7 +188,7 @@ export function accuracyShift(state, attacker, w, tHex, extra) {
  */
 export function strengthOf(state, attacker, w, extra) {
   let s = w.strength;
-  if (attacker.upgrades.indexOf('strength') !== -1) s += 1;
+  s += State.upgradeCount(attacker, 'strength');
   s += Effects.ongoingModifier(state, attacker, 'strength');
   if (state.activation && state.activation.uid === attacker.uid) {
     s += state.activation.mods.strength;
@@ -317,6 +324,9 @@ export function resolveAttack(state, uid, wid, ref, extra) {
 
   const rolled = rollAttack(state.rng, state.rules, dice, shift, disarmed);
   state.rng = rolled.state;
+  // Disarm lasts for one attack: rerolled hits and no crit effects, then it is removed
+  // (rulebook 2026-10-30, "Disarm").
+  if (disarmed) attacker.statuses.splice(attacker.statuses.indexOf('disarm'), 1);
 
   const outcome = {
     t: 'attack',
@@ -352,7 +362,7 @@ export function resolveAttack(state, uid, wid, ref, extra) {
   }
 
   if (hits > 0) {
-    const dealt = dealDamage(state, ref, hits + critDamage, attacker.side);
+    const dealt = dealDamage(state, ref, hits + critDamage, attacker.side, true);
     outcome.hits = hits;
     outcome.damage = dealt.damage;
     outcome.destroyed = dealt.destroyed;
@@ -406,7 +416,7 @@ export function applyStatus(state, uid, status) {
  * @param {0|1} bySide
  * @returns {{damage: number, destroyed: boolean, absorbed?: number, fractured?: boolean}}
  */
-export function dealDamage(state, ref, hits, bySide) {
+export function dealDamage(state, ref, hits, bySide, combat) {
   if (ref.kind === 'garrison') {
     const g = state.garrisons[ref.id];
     if (!g || !g.alive) return { damage: 0, destroyed: false };
@@ -426,17 +436,19 @@ export function dealDamage(state, ref, hits, bySide) {
   let absorbed = 0;
   let fractured = false;
 
-  // The Shield upgrade absorbs one point per activation of the unit holding
-  // it, so it is spent here and refreshed when that unit next activates.
-  if (u.upgrades.indexOf('shield') !== -1 && !u.shieldSpent && damage > 0) {
-    absorbed = 1;
-    damage -= 1;
-    u.shieldSpent = true;
+  // Each active Shield prevents one point and then deactivates until its holder next activates
+  // (rulebook 2026-10-30, "Shield Upgrades"). Shields also stop collision damage.
+  const ready = State.upgradeCount(u, 'shield') * state.rules.upgrades.shieldAbsorb - (u.shieldSpent | 0);
+  if (ready > 0 && damage > 0) {
+    absorbed = Math.min(ready, damage);
+    damage -= absorbed;
+    u.shieldSpent = (u.shieldSpent | 0) + absorbed;
   }
 
-  // `fracture` adds 3 the next time the unit takes 3 or more, then clears.
+  // `fracture` adds 3 the next time the unit takes 3 or more COMBAT damage from one attack, then
+  // clears. Direct damage from an ability never triggers it (rulebook 2026-10-30, "Fracture").
   const fi = u.statuses.indexOf('fracture');
-  if (fi !== -1 && damage >= state.rules.statuses.fractureThreshold) {
+  if (combat && fi !== -1 && damage >= state.rules.statuses.fractureThreshold) {
     damage += state.rules.statuses.fractureBonus;
     u.statuses.splice(fi, 1);
     fractured = true;
@@ -486,7 +498,7 @@ export function destroyUnit(state, u, bySide) {
     u.hex = null;
     u.hp = u.maxHp;
     u.statuses = [];
-    u.shieldSpent = false;
+    u.shieldSpent = 0;
   } else {
     Timeline.remove(state.timeline, u.uid);
   }

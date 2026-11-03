@@ -79,7 +79,8 @@ export function unit(uid, defId, side, hex, overrides) {
     tl: o.tl === undefined ? base.tl : o.tl,
     vp: o.vp === undefined ? base.vp : o.vp,
     weapons: o.weapons === undefined ? FIXTURE_WEAPONS.map(function (w) { return w; }) : o.weapons,
-    upgrades: o.upgrades
+    upgrades: o.upgrades,
+    traits: o.traits
   };
 }
 
@@ -100,6 +101,7 @@ export function game(spec) {
     garrisons: s.garrisons,
     objectives: s.objectives,
     bases: s.bases,
+    pickups: s.pickups,
     tactics: s.tactics,
     setupOrder: s.setupOrder
   });

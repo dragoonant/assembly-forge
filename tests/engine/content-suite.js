@@ -105,7 +105,9 @@ T.suite('content text', function () {
       damage: { k: 'damage', n: 1 },
       status: { k: 'status', s: 'slow' },
       heal: { k: 'heal', n: 1 },
-      extraAttack: { k: 'extraAttack', n: 1 }
+      extraAttack: { k: 'extraAttack', n: 1 },
+      push: { k: 'push', n: 2 },
+      pull: { k: 'pull', n: 1 }
     };
     for (let i = 0; i < Effects.EFFECT_KINDS.length; i++) {
       const kind = Effects.EFFECT_KINDS[i];

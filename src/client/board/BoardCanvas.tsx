@@ -16,8 +16,9 @@ export interface BoardUnit {
 /** Placeholder terrain colours on gunmetal, ahead of the hangar-deck skin (PLAN.md D5, M5). */
 const TERRAIN_COLOUR: Record<string, string> = {
   open: '#5b6068',
-  rough: '#6e5a44',
+  debris: '#6e5a44',
   water: '#2f5f7a',
+  field: '#5a4f78',
   blocked: '#24262b',
 }
 const SIDE_COLOUR = ['#c8463a', '#3a78c8'] as const

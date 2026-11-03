@@ -97,6 +97,8 @@ export function effectPhrase(e, timing) {
     case 'heal':        return 'repair ' + e.n + ' damage';
     case 'damage':      return 'deal ' + e.n + ' damage';
     case 'status':      return 'apply ' + (STATUSES[e.s] || e.s);
+    case 'push':        return 'push the target ' + e.n + (e.n === 1 ? ' hex' : ' hexes');
+    case 'pull':        return 'pull the target ' + e.n + (e.n === 1 ? ' hex' : ' hexes');
     case 'extraAttack':
       return 'make ' + (e.n === 1 ? 'an additional attack' : e.n + ' additional attacks') +
         ' at no Timeline cost';

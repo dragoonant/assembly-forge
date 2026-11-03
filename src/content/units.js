@@ -17,7 +17,8 @@
  * fight still hands the loser points.
  *
  * Observed ranges the published set stays inside, used here as guardrails:
- * hp 9-18, vp 5-10, starting Timeline 1-3, weapon range 1-5.
+ * hp 9-18, vp 5-10, starting Timeline 1-3, weapon range 1-5. Values here were
+ * re-tuned by self-play after the rules reconciliation of 2026-11-03.
  */
 
 /**
@@ -70,11 +71,11 @@ export const UNITS = Object.freeze({
   // it has to close, which is what makes it a skirmisher rather than a sniper.
   u02: Object.freeze({
     defId: 'u02',
-    hp: 11, vp: 7, tl: 1,
+    hp: 12, vp: 6, tl: 1,
     traits: ['assault', 'high-maneuver'],
     weapons: Object.freeze([
       Object.freeze({ wid: 'u02a', tlCost: 2, range: 2, strength: 3, crit: { status: 'fracture' } }),
-      Object.freeze({ wid: 'u02b', tlCost: 4, range: 1, strength: 7, crit: { damage: 2 } })
+      Object.freeze({ wid: 'u02b', tlCost: 3, range: 1, strength: 7, crit: { damage: 2 } })
     ]),
     abilities: Object.freeze([
       Object.freeze({
@@ -94,7 +95,7 @@ export const UNITS = Object.freeze({
   // Highest bounty in the roster: losing it swings the score twice.
   u03: Object.freeze({
     defId: 'u03',
-    hp: 9, vp: 9, tl: 3,
+    hp: 11, vp: 7, tl: 3,
     traits: ['artillery'],
     weapons: Object.freeze([
       Object.freeze({ wid: 'u03a', tlCost: 2, range: 1, strength: 2, crit: { status: 'disarm' } }),
@@ -118,7 +119,7 @@ export const UNITS = Object.freeze({
   // the next attacker's job easier.
   u04: Object.freeze({
     defId: 'u04',
-    hp: 14, vp: 8, tl: 3,
+    hp: 14, vp: 7, tl: 3,
     traits: ['assault'],
     weapons: Object.freeze([
       Object.freeze({ wid: 'u04a', tlCost: 2, range: 1, strength: 3, crit: { status: 'disarm' } }),
@@ -142,7 +143,7 @@ export const UNITS = Object.freeze({
   // Timeline a swing -- it is slow in the only sense this game measures.
   u05: Object.freeze({
     defId: 'u05',
-    hp: 17, vp: 10, tl: 2,
+    hp: 17, vp: 8, tl: 2,
     traits: ['durable', 'assault'],
     weapons: Object.freeze([
       Object.freeze({ wid: 'u05a', tlCost: 2, range: 3, strength: 2, crit: { status: 'slow' } }),
@@ -169,14 +170,16 @@ export const UNITS = Object.freeze({
   }),
 
   // Ignores line of sight with its mortar, so it punishes anyone hiding on an
-  // objective. Toughest hull, lowest bounty: it is meant to sit there.
+  // objective. Built to sit on one: once objectives paid several VP each it
+  // held them too well, so self-play trimmed its hull and mortar (see
+  // docs/rules-reconciliation.md, "Balance after reconciliation").
   u06: Object.freeze({
     defId: 'u06',
-    hp: 18, vp: 5, tl: 3,
+    hp: 13, vp: 7, tl: 3,
     traits: ['durable', 'installation'],
     weapons: Object.freeze([
       Object.freeze({ wid: 'u06a', tlCost: 2, range: 2, strength: 3, crit: { status: 'slow' } }),
-      Object.freeze({ wid: 'u06b', tlCost: 4, range: 4, strength: 6, ignoreLos: true, crit: { status: 'slow' } })
+      Object.freeze({ wid: 'u06b', tlCost: 4, range: 3, strength: 5, ignoreLos: true, crit: { status: 'slow' } })
     ]),
     abilities: Object.freeze([
       Object.freeze({

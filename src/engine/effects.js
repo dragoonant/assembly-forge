@@ -44,7 +44,7 @@ import * as State from './state.js';
 
 /** Effect kinds the engine resolves. Anything else is a bug, not a no-op. */
 export const EFFECT_KINDS = Object.freeze([
-  'strength', 'accuracy', 'move', 'energy', 'damage', 'status', 'heal', 'extraAttack'
+  'strength', 'accuracy', 'move', 'energy', 'damage', 'status', 'heal', 'extraAttack', 'push', 'pull'
 ]);
 
 /** Response events the engine raises. */
@@ -274,6 +274,11 @@ export function resolve(state, uid, a, targetUid, combat) {
         if (targetUid && combat.applyStatus(state, targetUid, e.s)) applied.push('status');
         break;
 
+      case 'push':
+      case 'pull':
+        if (targetUid && displace(state, u, targetUid, e.n, e.k, combat)) applied.push(e.k);
+        break;
+
       default:
         // Loud, not silent. An effect kind the engine does not know is a
         // content bug, and a no-op would hide it behind an ability that simply
@@ -289,6 +294,63 @@ export function resolve(state, uid, a, targetUid, combat) {
     applied: applied, sound: 'ability', notice: true
   });
   return { applied: applied };
+}
+
+/**
+ * Push or Pull (rulebook 2026-10-30, "Push" and "Pull"). The target moves one hex at a time, each
+ * hex strictly further from (Push) or closer to (Pull) the source, ignoring terrain and Engagement
+ * costs. It may not be moved onto higher ground: that, impassable terrain, or another unit or
+ * Garrison in the way is a collision, which stops it and deals 2 damage to everything involved
+ * (non-combat damage, so Shields stop it and Fracture does not). The board edge just stops it. An
+ * enemy already adjacent at the same elevation cannot be Pulled.
+ *
+ * Where several hexes qualify, the engine picks the one with the lowest key, so a push resolves
+ * the same way every time. The rulebook lets the pushing player choose; this is a simplification
+ * recorded in PLAN.md.
+ *
+ * @param {Object} state
+ * @param {Object} source the unit doing the pushing or pulling
+ * @param {string} targetUid
+ * @param {number} n hexes
+ * @param {'push'|'pull'} mode
+ * @param {Object} combat injected combat module
+ * @returns {boolean} whether anything happened
+ */
+export function displace(state, source, targetUid, n, mode, combat) {
+  const t = state.units[targetUid];
+  if (!t || !t.alive || !t.hex || !source.hex) return false;
+  if (mode === 'pull' && Hex.distance(source.hex, t.hex) === 1 &&
+      State.elevationAt(state, source.hex) === State.elevationAt(state, t.hex)) return false;
+
+  const from = { q: t.hex.q, r: t.hex.r };
+  let moved = 0;
+  for (let step = 0; step < n; step++) {
+    const d = Hex.distance(source.hex, t.hex);
+    const options = Hex.neighbours(t.hex).filter(function (h) {
+      const nd = Hex.distance(source.hex, h);
+      return mode === 'push' ? nd > d : nd < d && !Hex.equals(h, source.hex);
+    }).sort(function (a, b) { return Hex.key(a) < Hex.key(b) ? -1 : 1; });
+    if (!options.length) break;
+    const to = options[0];
+    const cell = State.cellAt(state, to);
+    if (!cell) break; // the board edge: no collision, the movement just ends
+    const kind = state.rules.terrain[cell.terrain];
+    const higher = cell.elevation > State.elevationAt(state, t.hex);
+    const other = State.unitAt(state, to);
+    const g = State.garrisonAt(state, to);
+    if (higher || kind.impassable || other || g) {
+      const dmg = state.rules.movement.collisionDamage;
+      state.log.push({ t: 'collision', uid: t.uid, at: { q: to.q, r: to.r }, with: other ? other.uid : g ? g.gid : 'terrain', sound: 'hit', notice: true });
+      combat.dealDamage(state, { kind: 'unit', id: t.uid }, dmg, source.side, false);
+      if (other) combat.dealDamage(state, { kind: 'unit', id: other.uid }, dmg, source.side, false);
+      if (g) combat.dealDamage(state, { kind: 'garrison', id: g.gid }, dmg, source.side, false);
+      break;
+    }
+    t.hex = { q: to.q, r: to.r };
+    moved++;
+  }
+  if (moved) state.log.push({ t: mode, uid: t.uid, by: source.uid, from: from, to: t.hex ? { q: t.hex.q, r: t.hex.r } : null, hexes: moved });
+  return true;
 }
 
 /**

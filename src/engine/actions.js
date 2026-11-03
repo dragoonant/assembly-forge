@@ -76,9 +76,12 @@ export function legalActions(state) {
 
   // Slot A: Advance. Free, once per activation, and only while the movement
   // block is still open.
-  if (!act.slots.advance && !act.movementClosed && !act.slowed) {
+  if (!act.slots.advance && !act.movementClosed && u.statuses.indexOf('slow') !== -1) {
+    // Slowed: the next Advance moves 0 hexes and spends the status (rulebook 2026-10-30, "Slow").
+    out.push({ type: 'advance', uid: u.uid, to: { q: u.hex.q, r: u.hex.r }, path: [{ q: u.hex.q, r: u.hex.r }], cost: 0, slowed: true });
+  } else if (!act.slots.advance && !act.movementClosed && !act.slowed) {
     let allowance = rules.movement.advanceHexes;
-    if (u.upgrades.indexOf('speed') !== -1) allowance += rules.upgrades.speedBonusHexes;
+    allowance += State.upgradeCount(u, 'speed') * rules.upgrades.speedBonusHexes;
     allowance += act.mods.move;
     const moves = movementOptions(state, act.uid, allowance);
     for (let i = 0; i < moves.length; i++) {
@@ -338,6 +341,15 @@ export function movementOptions(state, uid, allowance) {
   if (rules.movement.engagementPenalty && State.isEngaged(state, u.side, u.hex)) {
     allowance -= rules.movement.engagementPenalty;
   }
+  // Water and debris: a move started in them loses a hex. Hover ignores terrain penalties.
+  const hover = State.hasHover(u);
+  const startKind = State.terrainAt(state, u.hex);
+  if (!hover && startKind && startKind.startPenalty) allowance -= startKind.startPenalty;
+
+  // Jumping (rulebook 2026-10-30, "Jumping"): a move started on elevated terrain keeps that
+  // elevation for its whole length, so it passes over lower enemies and gaps and pays extra only
+  // to climb above where it started.
+  const jumpFrom = rules.movement.jump ? State.elevationAt(state, u.hex) : 0;
 
   // Dijkstra: costs vary by hex, so a breadth-first walk would lie about which
   // hexes are in range. The frontier is scanned in (cost, key) order, which
@@ -368,8 +380,8 @@ export function movementOptions(state, uid, allowance) {
       const to = around[i];
       const toKey = Hex.key(to);
       if (settled[toKey]) continue;
-      if (!canPassThrough(state, u, to)) continue;
-      const cost = currentCost + enterCost(state, u.side, from, to);
+      if (!canPassThrough(state, u, to, jumpFrom)) continue;
+      const cost = currentCost + (hover ? state.rules.movement.baseHexCost : enterCost(state, u.side, from, to, jumpFrom));
       if (cost > allowance) continue;
       if (best[toKey] === undefined || cost < best[toKey]) {
         best[toKey] = cost;
@@ -425,23 +437,27 @@ function pathTo(prev, startKey, endKey) {
  * @param {{q: number, r: number}} h
  * @returns {boolean}
  */
-export function canPassThrough(state, u, h) {
+export function canPassThrough(state, u, h, jumpFrom) {
   const cell = State.cellAt(state, h);
   if (!cell) return false;
   const kind = state.rules.terrain[cell.terrain];
-  if (!kind || kind.impassable) return false;
+  if (!kind) return false;
+  // Impassable terrain may be crossed only with Hover, and never ended on (see canEndOn).
+  if (kind.impassable && !State.hasHover(u)) return false;
+  // A jumping unit passes over enemies standing lower than the level it jumped from.
+  const over = jumpFrom !== undefined && jumpFrom > cell.elevation;
 
   const other = State.unitAt(state, h);
   if (other && other.uid !== u.uid) {
     if (other.side === u.side) {
       if (!state.rules.movement.passThroughFriendly) return false;
-    } else if (!state.rules.movement.passThroughEnemy) {
+    } else if (!state.rules.movement.passThroughEnemy && !over) {
       return false;
     }
   }
 
   const g = State.garrisonAt(state, h);
-  if (g && g.side !== u.side && state.rules.movement.enemyGarrisonBlocks) return false;
+  if (g && g.side !== u.side && state.rules.movement.enemyGarrisonBlocks && !over) return false;
 
   // Enemy structures, such as Bases, may not be moved through; allied ones may.
   const b = State.baseAt(state, h);
@@ -460,6 +476,8 @@ export function canPassThrough(state, u, h) {
  */
 export function canEndOn(state, u, h) {
   if (!canPassThrough(state, u, h)) return false;
+  const cell = State.cellAt(state, h);
+  if (state.rules.terrain[cell.terrain].impassable) return false;
   const other = State.unitAt(state, h);
   if (other && other.uid !== u.uid && state.rules.movement.onePerHex) return false;
   const g = State.garrisonAt(state, h);
@@ -477,11 +495,14 @@ export function canEndOn(state, u, h) {
  * @param {{q: number, r: number}} to
  * @returns {number}
  */
-export function enterCost(state, side, from, to) {
+export function enterCost(state, side, from, to, jumpFrom) {
   const m = state.rules.movement;
   let cost = m.baseHexCost;
 
-  const climb = State.elevationAt(state, to) - State.elevationAt(state, from);
+  // Climbing is paid against the higher of where this step starts and where the move started, so a
+  // jumping unit only pays to go above its starting level.
+  const floor = Math.max(State.elevationAt(state, from), jumpFrom || 0);
+  const climb = State.elevationAt(state, to) - floor;
   if (climb > 0) cost += climb * m.elevationCostPerLevel;
 
   const kind = State.terrainAt(state, to);

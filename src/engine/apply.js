@@ -38,7 +38,15 @@ export function apply(state, action) {
 
   switch (canonical.type) {
     case 'advance':
-      moveUnit(next, canonical, 'advance');
+      if (canonical.slowed) {
+        // The slowed Advance: it happens, moves nothing, and spends the status.
+        const su = State.unit(next, act.uid);
+        su.statuses.splice(su.statuses.indexOf('slow'), 1);
+        act.slowed = true;
+        next.log.push({ t: 'slowed', uid: su.uid });
+      } else {
+        moveUnit(next, canonical, 'advance');
+      }
       act.slots.advance = true;
       break;
 
@@ -138,6 +146,7 @@ export function apply(state, action) {
       act.startHex = { q: u.hex.q, r: u.hex.r };
       act.deployed = true;
       next.log.push({ t: 'deploy', uid: u.uid, side: u.side, to: { q: u.hex.q, r: u.hex.r }, sound: 'deploy' });
+      collectPickup(next, u);
       break;
     }
 
@@ -169,7 +178,11 @@ export function isTerminal(state) {
 export function leader(state) {
   const a = state.players[0].vp;
   const b = state.players[1].vp;
-  if (a === b) return null;
+  if (a === b) {
+    // In a tie the last player to act during the game wins (rulebook 2026-10-30, "Victory Points").
+    if (state.over && state.rules.scoring.tieBreakLastToAct && state.lastActedSide !== null) return state.lastActedSide;
+    return null;
+  }
   return a > b ? 0 : 1;
 }
 
@@ -186,8 +199,24 @@ function moveUnit(state, action, kind) {
   u.hex = { q: action.to.q, r: action.to.r };
   state.activation.moved = true;
   state.log.push({
-    t: kind, uid: u.uid, from: from, to: { q: u.hex.q, r: u.hex.r }, cost: action.cost
+    t: kind, uid: u.uid, from: from, to: { q: u.hex.q, r: u.hex.r }, cost: action.cost,
+    path: (action.path || []).map(function (h) { return { q: h.q, r: h.r }; })
   });
+  collectPickup(state, u);
+}
+
+/**
+ * A unit that ends a move on, or deploys onto, a map pickup collects it.
+ * @param {Object} state
+ * @param {Object} u
+ */
+export function collectPickup(state, u) {
+  const p = State.pickupAt(state, u.hex);
+  if (!p) return;
+  state.pickups = state.pickups.filter(function (x) { return x.pid !== p.pid; });
+  if (p.kind === 'energy') u.energy += 1;
+  else u.upgrades.push(p.upgrade);
+  state.log.push({ t: 'pickup', uid: u.uid, pid: p.pid, kind: p.kind, upgrade: p.upgrade, sound: 'pickup', notice: true });
 }
 
 /**

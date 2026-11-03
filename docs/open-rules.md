@@ -1,3 +1,7 @@
+> **Closed 2026-11-03.** Every row below was checked against the publisher's core rulebook (2026-10-30)
+> and resolved; see `rules-reconciliation.md` for the outcome. This file is kept as the record of what
+> was guessed before retail.
+
 # Open rules, house decisions, and one invention
 
 Everything in this game that is **ours rather than the publisher's**.

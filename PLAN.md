@@ -2,7 +2,7 @@
 
 **Status: approved direction, 2026-11-03.** Nothing below is built. The owner
 settled D1, D2 and D5 to D10, and the card portraits, on 2026-11-03.
-M0 (scaffold) is built; see STATUS.md.
+M0 (scaffold) and M1 (rules) are built; see STATUS.md.
 
 Assembly Forge is the 3D successor to MegaMechaTactics. It keeps that game's
 rules engine, roster, Tactics deck and AI, replaces the SVG hex map with a 3D

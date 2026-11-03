@@ -185,6 +185,44 @@ export function terrainAt(state, h) {
 // --- Occupancy ---------------------------------------------------------------
 
 /**
+ * Does a unit Hover? Hover ignores terrain and elevation penalties while moving and may cross
+ * impassable terrain (rulebook 2026-10-30, "Hover"). Carried as a trait.
+ * @param {Object} u
+ * @returns {boolean}
+ */
+export function hasHover(u) {
+  return Boolean(u.traits && u.traits.indexOf('hover') !== -1);
+}
+
+/**
+ * How many of an Upgrade a unit holds. Upgrades stack: each Speed adds a hex, each Strength a die,
+ * each Shield prevents a point (rulebook 2026-10-30, "Upgrades").
+ * @param {Object} u
+ * @param {string} kind
+ * @returns {number}
+ */
+export function upgradeCount(u, kind) {
+  let n = 0;
+  for (let i = 0; i < u.upgrades.length; i++) if (u.upgrades[i] === kind) n++;
+  return n;
+}
+
+/**
+ * The map pickup on a hex, or null: an Upgrade or an Energy token waiting to be collected.
+ * @param {Object} state
+ * @param {?{q: number, r: number}} h
+ * @returns {?Object}
+ */
+export function pickupAt(state, h) {
+  if (!h) return null;
+  const list = state.pickups || [];
+  for (let i = 0; i < list.length; i++) {
+    if (list[i].hex.q === h.q && list[i].hex.r === h.r) return list[i];
+  }
+  return null;
+}
+
+/**
  * The Base on a hex, or null. Bases are structures: no unit may end a move on one, and an enemy
  * Base blocks movement and line of sight (rulebook 2026-10-30, "Moving", "Line of Sight").
  * @param {Object} state
@@ -364,6 +402,14 @@ export function createGame(spec) {
     bases: (spec.bases || []).map(function (b) {
       return { bid: b.bid, side: b.side, hex: { q: b.hex.q, r: b.hex.r } };
     }),
+    /**
+     * Upgrades and Energy tokens on the map. A unit collects one by ENDING a move on its hex, or
+     * by deploying onto it; passing through is not enough (rulebook 2026-10-30, "Collecting
+     * Upgrades and Energy on the Map").
+     */
+    pickups: (spec.pickups || []).map(function (p) {
+      return { pid: p.pid, kind: p.kind, upgrade: p.upgrade || null, hex: { q: p.hex.q, r: p.hex.r } };
+    }),
 
     players: [emptyPlayer(0), emptyPlayer(1)],
 
@@ -514,6 +560,7 @@ export function addUnit(state, spec) {
       };
     }),
     abilities: (spec.abilities || []).map(function (a) { return clone(a); }),
+    traits: (spec.traits || []).slice(),
     /** The Shield upgrade's charge, spent on damage and refreshed on activation. */
     shieldSpent: false,
     alive: !reserve,
@@ -609,15 +656,12 @@ export function beginActivation(state, uid, side) {
   state.players[side].tacticsLockout = false;
   // The Shield upgrade absorbs one point per activation, so its charge comes
   // back here rather than at end of round.
-  u.shieldSpent = false;
+  u.shieldSpent = 0;
 
-  // `slow` prevents the unit's NEXT Advance, so it is consumed by opening this
-  // activation whether or not the unit would have moved. Consuming it here
-  // rather than at the moment of movement is what stops a slowed unit from
-  // sitting still to save the status for a turn it cares about.
-  const slowAt = u.statuses.indexOf('slow');
-  const slowed = slowAt !== -1;
-  if (slowed) u.statuses.splice(slowAt, 1);
+  // `slow` is NOT consumed here. The rulebook (2026-10-30, "Slow") spends it on the unit's next
+  // Advance, which then moves 0 hexes; Dash and other movement are unaffected. A slowed unit that
+  // never Advances keeps the status. `legalActions` offers the 0-hex Advance; see actions.js.
+  const slowed = false;
   return {
     uid: uid,
     side: side,

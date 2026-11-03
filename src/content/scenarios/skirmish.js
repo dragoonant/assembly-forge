@@ -49,7 +49,7 @@ function mirror(pair) {
  *   - A raised spine across the middle, two levels at the centre, which is the
  *     high ground both sides want and the objective everyone has to contest.
  *   - A shallow stream on each flank that slows anything crossing it.
- *   - Broken ground and two wreck stacks that break up long firing lanes.
+ *   - Debris fields and two wreck stacks that break up long firing lanes.
  */
 const HALF_TERRAIN = [
   [[6, 7], { elevation: 2 }],
@@ -60,9 +60,9 @@ const HALF_TERRAIN = [
   [[3, 2], { terrain: 'water' }],
   [[3, 3], { terrain: 'water' }],
   [[4, 4], { terrain: 'water' }],
-  [[2, 9], { terrain: 'rough' }],
-  [[3, 10], { terrain: 'rough' }],
-  [[8, 3], { terrain: 'rough' }],
+  [[2, 9], { terrain: 'debris' }],
+  [[3, 10], { terrain: 'debris' }],
+  [[8, 3], { terrain: 'debris' }],
   [[5, 11], { terrain: 'blocked' }],
   [[9, 5], { terrain: 'blocked' }]
 ];
@@ -138,6 +138,26 @@ const OBJECTIVES = [
   { oid: 'o3', at: mirror([6, 2]), vp: 4 }
 ];
 
+/**
+ * Map pickups, mirrored: on each half a Shield and a Speed Upgrade out on the flanks and an Energy
+ * token on the approach to the centre. A machine collects one by ending a move on it.
+ */
+const HALF_PICKUPS = [
+  { kind: 'upgrade', upgrade: 'shield', at: [4, 1] },
+  { kind: 'upgrade', upgrade: 'speed', at: [4, 12] },
+  { kind: 'energy', at: [4, 7] }
+];
+
+function pickupLayout() {
+  const out = [];
+  for (let i = 0; i < HALF_PICKUPS.length; i++) {
+    const p = HALF_PICKUPS[i];
+    out.push({ pid: 'p' + (2 * i + 1), kind: p.kind, upgrade: p.upgrade, at: p.at });
+    out.push({ pid: 'p' + (2 * i + 2), kind: p.kind, upgrade: p.upgrade, at: mirror(p.at) });
+  }
+  return out;
+}
+
 function axial(pair) {
   return Hex.fromOffset(pair[0], pair[1]);
 }
@@ -189,6 +209,9 @@ export function skirmish(opts) {
     rules: o.rules,
     board: { cols: COLS, rows: ROWS, shortRows: true, hexes: hexes },
     bases: LAYOUT.bases,
+    pickups: pickupLayout().map(function (p) {
+      return { pid: p.pid, kind: p.kind, upgrade: p.upgrade, hex: axial(p.at) };
+    }),
     units: units,
     tactics: decks,
     garrisons: GARRISONS.map(function (g) {

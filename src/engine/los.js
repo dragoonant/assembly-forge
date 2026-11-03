@@ -86,9 +86,15 @@ export function blocksAt(state, h, ctx) {
   const kind = State.terrainAt(state, h);
   if (kind && kind.blocksLos) return true;
 
-  // Elevation. Both readings are the attacker's, not the target's.
-  if (cell.elevation > ctx.fromElev) return true;
-  if (ctx.fromElev > ctx.toElev && cell.elevation === ctx.fromElev) return true;
+  // The rulebook's cases (2026-10-30, "Line of Sight"), all judged by the two units' elevations:
+  //   - terrain higher than BOTH units blocks;
+  //   - when they stand at different levels, anything at the higher unit's level blocks;
+  //   - when they stand at the same level, enemies and enemy structures at that level block.
+  // Allies never block, and anything below the line's level can be shot over.
+  const hi = Math.max(ctx.fromElev, ctx.toElev);
+  if (cell.elevation > hi) return true;
+  if (ctx.fromElev !== ctx.toElev) return cell.elevation === hi;
+  if (cell.elevation !== ctx.fromElev) return false;
 
   const blockers = state.rules.combat.losBlockers;
 
@@ -97,7 +103,12 @@ export function blocksAt(state, h, ctx) {
     if (u.side !== ctx.side ? blockers.enemyUnits : blockers.friendlyUnits) return true;
   }
 
-  if (blockers.garrisons && State.garrisonAt(state, h)) return true;
+  const g = State.garrisonAt(state, h);
+  if (blockers.garrisons && g && g.side !== null && g.side !== ctx.side) return true;
+
+  const b = State.baseAt(state, h);
+  if (blockers.bases && b && b.side !== ctx.side) return true;
+
   if (blockers.objectives && State.objectiveAt(state, h)) return true;
 
   return false;

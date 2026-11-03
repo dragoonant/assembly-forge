@@ -27,7 +27,10 @@
 /**
  * @typedef {Object} TerrainKind
  * @property {number} moveExtra      extra movement cost to enter, beyond the base 1
- * @property {number} accuracy       accuracy shift applied to attacks, once combat exists
+ * @property {number} startPenalty   hexes lost from any move started in this terrain
+ * @property {number} accuracyInto   accuracy shift attacking a target standing in it
+ * @property {number} accuracyFrom   accuracy shift attacking from it
+ * @property {boolean} field         an interference field: see `combat.fieldAccuracy`
  * @property {boolean} blocksLos     does a hex of this kind block line of sight
  * @property {boolean} impassable    can a unit enter it at all
  */
@@ -143,6 +146,12 @@ export const DEFAULTS = {
     /** A unit may not pass through an enemy unit and must detour. */
     passThroughEnemy: false,
 
+    /** Damage to each party in a Push or Pull collision. Rulebook 2026-10-30, "Push". */
+    collisionDamage: 2,
+
+    /** Units on elevated terrain Jump as they move. Rulebook 2026-10-30, "Jumping". */
+    jump: true,
+
     /** Enemy structures such as Bases may not be moved through. Rulebook 2026-10-30, "Moving". */
     enemyBaseBlocks: true,
 
@@ -164,20 +173,27 @@ export const DEFAULTS = {
   },
 
   /**
-   * OPEN QUESTION 6. The full terrain catalogue is not published. These four
-   * kinds cover everything the sources actually describe -- open ground,
-   * water (costs a hex and hurts accuracy), and impassable scenery -- plus
-   * `rough` as a cheap hook for the "costs a hex, no accuracy effect" slot the
-   * catalogue almost certainly contains. Elevation is a per-hex number rather
-   * than a terrain kind, because the sources treat it as an independent axis.
+   * RESOLVED (rulebook 2026-10-30, "Elevation and Special Terrain").
+   *
+   *   water, debris -- a move started in it loses one hex; attacking a target
+   *                    in it is -1 accuracy, attacking from it is -1, both -2.
+   *   field         -- an interference field: no movement effect; see
+   *                    `combat.fieldAccuracy`.
+   *   blocked       -- impassable: no unit may enter or end in it. This
+   *                    project's impassable pieces are tall wreck stacks, so
+   *                    they also block line of sight.
+   *
+   * Elevation is a per-hex number rather than a terrain kind, because the
+   * rulebook treats it as an independent axis.
    *
    * @type {Object<string, TerrainKind>}
    */
   terrain: {
-    open:    { moveExtra: 0, accuracy: 0,  blocksLos: false, impassable: false },
-    rough:   { moveExtra: 1, accuracy: 0,  blocksLos: false, impassable: false },
-    water:   { moveExtra: 1, accuracy: -1, blocksLos: false, impassable: false },
-    blocked: { moveExtra: 0, accuracy: 0,  blocksLos: true,  impassable: true }
+    open:    { moveExtra: 0, startPenalty: 0, accuracyInto: 0,  accuracyFrom: 0,  field: false, blocksLos: false, impassable: false },
+    water:   { moveExtra: 0, startPenalty: 1, accuracyInto: -1, accuracyFrom: -1, field: false, blocksLos: false, impassable: false },
+    debris:  { moveExtra: 0, startPenalty: 1, accuracyInto: -1, accuracyFrom: -1, field: false, blocksLos: false, impassable: false },
+    field:   { moveExtra: 0, startPenalty: 0, accuracyInto: 0,  accuracyFrom: 0,  field: true,  blocksLos: false, impassable: false },
+    blocked: { moveExtra: 0, startPenalty: 0, accuracyInto: 0,  accuracyFrom: 0,  field: false, blocksLos: true,  impassable: true }
   },
 
   // --- Actions -------------------------------------------------------------
@@ -278,8 +294,22 @@ export const DEFAULTS = {
       enemyUnits: true,
       friendlyUnits: false,
       garrisons: true,
-      objectives: true
+      bases: true,
+      objectives: false
     },
+
+    /**
+     * An interference field: -2 accuracy on an attack against a non-adjacent
+     * target when the attacker, the target, or both are inside one. Not
+     * cumulative. Rulebook 2026-10-30, "Special Terrain".
+     */
+    fieldAccuracy: -2,
+
+    /**
+     * Elevation is a flat +1 shooting at a lower target and -1 at a higher
+     * one, whatever the difference in levels. Rulebook 2026-10-30.
+     */
+    elevationAccuracyFlat: true,
 
     /**
      * A weapon may raise or lower the number of dice, and separately shift the
@@ -308,7 +338,7 @@ export const DEFAULTS = {
   },
 
   upgrades: {
-    /** Board pickups, collected by moving onto or through their hex. */
+    /** Board pickups, collected by ENDING a move on their hex or deploying onto it. Rulebook 2026-10-30. */
     known: ['shield', 'speed', 'strength', 'accuracy'],
     /** The Shield upgrade absorbs this much once per activation of its holder. */
     shieldAbsorb: 1,
@@ -373,7 +403,10 @@ export const DEFAULTS = {
     objectiveControl: 'contest',
 
     /** Whoever controls an Objective at the end of a Phase scores its VP. */
-    objectiveScoreAtPhaseEnd: true
+    objectiveScoreAtPhaseEnd: true,
+
+    /** A tied game goes to the last player to act. Rulebook 2026-10-30, "Victory Points". */
+    tieBreakLastToAct: true
   },
 
   // --- Tactics cards (declared now, resolved in a later milestone) ---------
@@ -429,7 +462,7 @@ export const OPEN_QUESTIONS = Object.freeze([
     n: 3,
     question: 'Line of sight along an exact hex boundary.',
     path: 'combat.losBoundary',
-    decision: 'Permissive: blocked only if both boundary hexes block.'
+    decision: 'RESOLVED (rulebook 2026-10-30): the acting player chooses which hex counts, which is the permissive reading.'
   }),
   Object.freeze({
     n: 4,
@@ -447,7 +480,7 @@ export const OPEN_QUESTIONS = Object.freeze([
     n: 6,
     question: "Full terrain catalogue and each type's movement and accuracy effect.",
     path: 'terrain',
-    decision: 'Four kinds covering everything the sources describe, plus a spare.'
+    decision: 'RESOLVED (rulebook 2026-10-30): open, water, debris, interference field, impassable; elevation is per hex.'
   }),
   Object.freeze({
     n: 7,
@@ -493,11 +526,11 @@ export const HOUSE_DECISIONS = Object.freeze([
   }),
   Object.freeze({
     path: 'combat.losBlockers',
-    decision: 'Enemy units, garrisons and objectives block line of sight; friendly units do not.'
+    decision: 'RESOLVED (rulebook 2026-10-30): enemy units, Garrisons and structures block, only at the level of both units; allies and objectives never.'
   }),
   Object.freeze({
     path: 'combat.elevationAccuracyPerLevel',
-    decision: 'Elevation shifts accuracy one pip per level, favouring the higher shooter.'
+    decision: 'RESOLVED (rulebook 2026-10-30): a flat +1 shooting down and -1 shooting up.'
   }),
   Object.freeze({
     path: 'combat.maxAccuracyShift',

@@ -295,7 +295,7 @@ T.suite('rules', function () {
 
   T.test('terrain kinds are looked up through the rules', function () {
     const rules = Rules.createRules();
-    T.eq(Rules.terrain(rules, 'water').moveExtra, 1);
+    T.eq(Rules.terrain(rules, 'water').startPenalty, 1);
     T.eq(Rules.terrain(rules, 'blocked').impassable, true);
     T.eq(Rules.terrain(rules, 'nonsense'), undefined);
   });
@@ -854,15 +854,41 @@ T.suite('movement', function () {
     T.notOk(T.find(hill, { type: 'advance', to: H(0, 0) }), 'the same hex, one level up, is not');
   });
 
-  T.test('water costs an extra hex', function () {
+  T.test('water costs nothing to enter, but a move started in it loses a hex', function () {
     const s = F.game({
       board: F.arena({ hexes: { '-2,0': { terrain: 'water' } } }),
       units: [F.unit('a1', 'u02', 0, H(-3, 0), { tl: 1 })]
     });
-    T.eq(Actions.enterCost(s, 0, H(-3, 0), H(-2, 0)), 2);
-    T.eq(T.find(s, { type: 'advance', to: H(-2, 0) }).cost, 2);
-    const beyond = T.find(s, { type: 'advance', to: H(-1, 0) });
-    T.eq(beyond.cost, 3, 'wading through and out again');
+    T.eq(Actions.enterCost(s, 0, H(-3, 0), H(-2, 0)), 1, 'wading in is a normal step');
+    T.ok(T.find(s, { type: 'advance', to: H(0, 0) }), 'a full Advance straight through it');
+    const wet = F.game({
+      board: F.arena({ hexes: { '-3,0': { terrain: 'water' } } }),
+      units: [F.unit('a1', 'u02', 0, H(-3, 0), { tl: 1 })]
+    });
+    T.ok(T.find(wet, { type: 'advance', to: H(-1, 0) }), 'starting in water, two hexes is fine');
+    T.notOk(T.find(wet, { type: 'advance', to: H(0, 0) }), 'but the third is lost');
+  });
+
+  T.test('a unit starting on high ground jumps: it pays only to climb above its start', function () {
+    // a1 on a level-1 plinth, a gap at level 0, then level 1 again: walking would pay to climb back
+    const hexes = { '-3,0': { elevation: 1 }, '-1,0': { elevation: 1 }, '0,0': { elevation: 2 } };
+    const s = F.game({
+      board: F.arena({ hexes: hexes }),
+      units: [F.unit('a1', 'u02', 0, H(-3, 0), { tl: 1 }), F.unit('b1', 'u06', 1, H(-2, 0), { tl: 5 })]
+    });
+    // b1 at ground level sits in the gap; a jumping a1 passes over it
+    const across = T.find(s, { type: 'advance', to: H(-1, 0) });
+    T.ok(across, 'over the lower enemy');
+    T.eq(across.cost, 2, 'two hexes, no climb back up to its own level');
+    const up = Actions.movementOptions(s, 'a1', 4).filter(function (m) { return Hex.equals(m.to, H(0, 0)); })[0];
+    T.ok(up, 'and on to level 2, given four hexes');
+    T.eq(up.cost, 4, 'three hexes plus one level above where it started');
+    const walk = F.game({
+      rules: { movement: { jump: false } },
+      board: F.arena({ hexes: hexes }),
+      units: [F.unit('a1', 'u02', 0, H(-3, 0), { tl: 1 }), F.unit('b1', 'u06', 1, H(5, -3), { tl: 5 })]
+    });
+    T.eq(T.find(walk, { type: 'advance', to: H(-1, 0) }).cost, 3, 'without jumping the climb back costs');
   });
 
   T.test('walking up to an enemy costs nothing extra', function () {
@@ -1088,7 +1114,7 @@ T.suite('invariants', function () {
       board: F.arena({
         hexes: {
           '0,-1': { elevation: 1 }, '0,1': { elevation: 2 }, '1,0': { terrain: 'water' },
-          '-1,0': { terrain: 'rough' }, '2,-2': { terrain: 'blocked' }
+          '-1,0': { terrain: 'debris' }, '2,-2': { terrain: 'blocked' }
         }
       })
     });

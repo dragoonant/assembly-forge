@@ -67,8 +67,9 @@ export const ACTION_HINTS = Object.freeze({
 /** Terrain kinds, by the ids used in `rules.terrain`. */
 export const TERRAIN = Object.freeze({
   open: 'Open ground',
-  rough: 'Broken ground',
   water: 'Shallows',
+  debris: 'Debris field',
+  field: 'Sensor haze',
   blocked: 'Impassable'
 });
 
