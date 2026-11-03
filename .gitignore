@@ -1,0 +1,31 @@
+# OS and cloud-sync cruft
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# Editors
+.vscode/
+.idea/
+*.swp
+
+# Local tool settings (keep shared config, ignore per-machine overrides)
+.claude/settings.local.json
+
+# Credentials. Never commit these.
+.env
+.env.*
+tools/.*_key
+tools/.*_token
+
+# Build output and dependencies
+node_modules/
+dist/
+*.log
+
+# Test and screenshot output
+test-results/
+playwright-report/
+e2e-out/
+
+# Full-resolution art and model masters stay local; the game ships cut copies.
+assets/masters/
