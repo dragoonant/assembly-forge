@@ -300,3 +300,16 @@ T.suite('tactics cards', function () {
     });
   });
 });
+
+T.suite('reserve and conditions', function () {
+  T.test('a unit in Reserve has no position conditions, and asking does not throw', function () {
+    const g = F.game({
+      units: [F.unit('a1', 'u02', 0, null), F.unit('b1', 'u06', 1, H(3, 0))],
+      bases: [{ bid: 'b0', side: 0, hex: H(-4, 0) }, { bid: 'b1', side: 1, hex: H(4, 0) }]
+    });
+    const u = State.unit(g, 'a1');
+    T.notOk(Effects.conditionHolds(g, u, { enemyAdjacent: true }));
+    T.notOk(Effects.conditionHolds(g, u, { alliesInRange: { n: 0, range: 3 } }));
+    T.ok(Effects.conditionHolds(g, u, null), 'no condition still holds');
+  });
+});

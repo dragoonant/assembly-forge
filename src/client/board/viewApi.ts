@@ -18,4 +18,6 @@ export const viewApi = {
   reset: (): void => {},
   setView: (_p: Partial<View>): void => {},
   camera: (): CameraReadout | null => null,
+  /** World point to client pixels, for tests that click a hex. */
+  project: (_x: number, _y: number, _z: number): { x: number; y: number } | null => null,
 }

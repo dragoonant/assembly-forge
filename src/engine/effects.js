@@ -85,6 +85,9 @@ export function ability(u, aid) {
  */
 export function conditionHolds(state, u, when) {
   if (!when) return true;
+  // A unit in Reserve is off the battlefield, so no condition about where it stands can hold; the rulebook notes
+  // that printed effects may not be active until a unit deploys (2026-10-30, "Deploying your Units").
+  if (!u.hex) return false;
 
   if (when.damageTaken !== undefined) {
     if (u.maxHp - u.hp < when.damageTaken) return false;

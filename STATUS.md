@@ -1,6 +1,6 @@
 # STATUS (rewrite, don't append)
 
-**2026-11-03: M0 and M1 done. Live at https://dragoonant.github.io/assembly-forge/. M2 (playable 3D board) next.**
+**2026-11-03: M0, M1 and M2 done: the game is playable in 3D. Live at https://dragoonant.github.io/assembly-forge/. M3 (animation) next.**
 
 ## What exists
 - Vite + React 19 + TypeScript + React Three Fiber, deploying `main` to GitHub Pages under `/assembly-forge/`.
@@ -11,21 +11,33 @@
 - The skirmish scenario on the 203-hex starter grid, with our own point-symmetric layout: one Base a side, two Garrisons a
   side, three Objectives (6, 4, 4 VP), six map pickups.
 - The roster re-tuned by self-play; every team now wins 47 to 53% of its mixed games.
-- A 3D view of the board from engine state (instanced hex prisms, Bases, stand-in units) under the camera ported from Three
-  Kingdoms Tactics. Not playable yet.
+- The playable 3D board: squad select and briefing, then the 203-hex board from the player's seat at the left edge. Every
+  affordance comes from the engine's legal actions: green rings for a free Advance, amber for a Dash, cyan for deploying,
+  red rings on targets, a line-of-sight line (dashed red to the blocking hex) while a weapon is armed, and terrain, cost
+  and marker facts on hover. Stand-in machines in the house proportions, one silhouette per archetype, with ground rings,
+  HP bars and status pips; Objectives, Garrisons, Bases and pickups on the board.
+- The HUD: top bar (score, Phase and round, opponent speed, reset view, new game), the Timeline column, the action column,
+  the Tactics hand, the unit card, the dice panel, a feed of what just happened, and the game-over panel. Phones get strips
+  instead of columns.
+- URL switches: `?ai=both` to spectate, `?ai=none` for hotseat, `?speed=fast|instant`, and `?team=..&foe=..&seed=..&auto=1`.
 
 ## Verified (2026-11-03)
 - `npm run typecheck`: clean.
-- `npm test`: 198 engine tests and 18 unit tests pass.
-- `npm run build`: clean. `npm run e2e`: the smoke test passes with zero console errors.
+- `npm test`: 199 engine tests and 19 unit tests pass (including the controller's attack-behind-the-dice path).
+- `npm run build`: clean.
+- `npm run e2e`: squad select to deploy to a move with real clicks on the 3D board, and a whole AI-vs-AI game through the
+  client, both with zero console errors. Screenshots of deploy, moves, close zoom, mid-game, game over and a phone layout
+  were looked at.
 - `node tools/ai-selfplay.js 96 pairs=all`: 96 games, no crashes, no forced passes; teams 47/50/53/50%.
 - Mirror matches: 23 to 25 over 48 games, so no seat advantage.
 
 ## Not verified / known gaps
-- Not playable by a person yet: no HUD, selection or moves (M2).
+- No person has played a full game yet; the e2e suite and AI games are the evidence so far.
+- State changes snap: no walking, firing or destruction animation until M3.
 - Mixed-team games have run about 57% to side 0 across runs with unpaired seeds; re-check with paired seeds.
 - Not checked on a phone or a real GPU; only headless software GL.
 - The `three` chunk is bundled with `@react-three` (about 920 kB, 246 kB gzipped).
 
 ## Next
-M2 per PLAN.md §4: the playable 3D board and the rebuilt HUD.
+M3 per PLAN.md §4: the presentation director (moves, attacks, destruction and phase banners animated from the engine log)
+and audio cues.

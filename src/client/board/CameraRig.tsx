@@ -15,11 +15,14 @@ export interface Insets {
   bottom: number
 }
 
-/** Pixels of the window the HUD leaves for the board. Pure, so the framing can be tested. */
+/** Pixels of the window the HUD leaves for the board: the Timeline column, the action column, the top bar and the hand. */
 export function insetsFor(width: number, height: number): Insets {
-  if (width >= 800) return { left: 16, right: 16, top: 64, bottom: 24 }
-  return { left: 6, right: 6, top: 56, bottom: 16 }
+  if (width >= 900) return { left: 132, right: 300, top: 56, bottom: 150 }
+  return { left: 6, right: 6, top: 96, bottom: Math.round(height * 0.4) }
 }
+
+/** The human player sits at the left edge (side 0's Base), so the overview looks across the board from there. */
+export const HOME_AZ = -Math.PI / 2
 
 const POLAR = 0.78 // radians from straight down, matching the overview pitch in cameraModel
 
@@ -83,9 +86,10 @@ export function CameraRig({ frame, surface }: { frame: Frame; surface: (x: numbe
   useEffect(() => {
     const cam = camera as PerspectiveCamera
     const ins = insetsFor(size.width, size.height)
-    const fit = fitBoard(cam.fov, size.width, size.height, ins, 0, frame)
+    const fit = fitBoard(cam.fov, size.width, size.height, ins, HOME_AZ, frame)
     const freeW = Math.max(120, size.width - ins.left - ins.right)
     const freeH = Math.max(120, size.height - ins.top - ins.bottom)
+    ctl.homeAz = HOME_AZ
     ctl.interactive = true
     ctl.lim = panLimits(frame)
     ctl.setFit({ overview: fit.dist, shiftX: fit.shiftX, shiftY: fit.shiftY, centreX: ins.left + freeW / 2 - size.width / 2, centreY: ins.top + freeH / 2 - size.height / 2 })
@@ -104,7 +108,13 @@ export function CameraRig({ frame, surface }: { frame: Frame; surface: (x: numbe
       const c = camera.position
       return { x: c.x, y: c.y, z: c.z, tx: v.x, tz: v.z, az: v.az, zoom: v.zoom, tilt: v.tilt, dist: distFor(v.zoom, ctl.fit.overview) }
     }
-  }, [camera, ctl])
+    viewApi.project = (x, y, z) => {
+      camera.updateMatrixWorld(true)
+      const v = new Vector3(x, y, z).project(camera)
+      const r = gl.domElement.getBoundingClientRect()
+      return { x: r.left + ((v.x + 1) / 2) * r.width, y: r.top + ((1 - v.y) / 2) * r.height }
+    }
+  }, [camera, ctl, gl])
 
   useFrame((_, dt) => ctl.update(Math.min(dt, 0.1)))
 

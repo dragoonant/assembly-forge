@@ -46,6 +46,8 @@ export class MapController {
   fit: Fit = { overview: 22, shiftX: 0, shiftY: 0, centreX: 0, centreY: 0 }
   interactive = false
   autoRotate = false
+  /** The azimuth the overview returns to: the human player's seat. */
+  homeAz = 0
   lim = { x: 5, z: 4.5 }
   /** Height of the highest surface at a world point (sand, hill or wall top): the camera never goes below it. */
   surface: (x: number, z: number) => number = () => PLANE_Y
@@ -113,7 +115,7 @@ export class MapController {
 
   /** Back to the fitted overview (keeps the azimuth), at once. */
   reset(keepAz = true): void {
-    this.view = { x: 0, z: 0, az: keepAz ? this.view.az : 0, zoom: 0, tilt: 0 }
+    this.view = { x: 0, z: 0, az: keepAz ? this.view.az : this.homeAz, zoom: 0, tilt: 0 }
     this.goalZoom = 0
     this.goalAz = this.view.az
     this.goalPan = null
@@ -125,6 +127,7 @@ export class MapController {
   /** Glide back to the overview. */
   flyHome(): void {
     this.goalZoom = 0
+    this.goalAz = this.homeAz
     this.anchor = null
     this.goalPan = { x: 0, z: 0, tilt: 0 }
     this.vel = { x: 0, z: 0 }
