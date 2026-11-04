@@ -202,7 +202,9 @@ export function strengthOf(state, attacker, w, extra, targets) {
   if (w.strengthPerAlly && attacker.hex) {
     let n = 0;
     for (const o of State.livingUnits(state, attacker.side)) {
-      if (o.uid !== attacker.uid && o.hex && Hex.distance(o.hex, attacker.hex) <= w.strengthPerAlly.range) n++;
+      if (o.uid === attacker.uid || !o.hex || Hex.distance(o.hex, attacker.hex) > w.strengthPerAlly.range) continue;
+      if (w.strengthPerAlly.los && !Los.hasLos(state, attacker.hex, o.hex, { side: attacker.side, targetUid: o.uid })) continue;
+      n++;
     }
     s += n * w.strengthPerAlly.n;
   }
@@ -423,10 +425,12 @@ export function dealDamage(state, ref, hits, bySide, combat, opts) {
     const g = state.garrisons[ref.id];
     if (!g || !g.alive) return { damage: 0, destroyed: false };
     g.alive = false;
-    state.players[bySide].vp += state.rules.scoring.garrisonDestroyVp;
+    // 2 VP for defeating an ENEMY Garrison (rulebook 2026-10-30, "Garrisons"): a side that destroys its own scores nothing
+    const vp = bySide === g.side ? 0 : state.rules.scoring.garrisonDestroyVp;
+    state.players[bySide].vp += vp;
     state.log.push({
       t: 'garrison_destroyed', gid: g.gid, by: bySide,
-      vp: state.rules.scoring.garrisonDestroyVp, sound: 'destroy', notice: true
+      vp: vp, sound: 'destroy', notice: true
     });
     return { damage: hits, destroyed: true };
   }
@@ -438,15 +442,6 @@ export function dealDamage(state, ref, hits, bySide, combat, opts) {
   let absorbed = 0;
   let fractured = false;
 
-  // Each active Shield prevents one point and then deactivates until its holder next activates
-  // (rulebook 2026-10-30, "Shield Upgrades"). Shields also stop collision damage.
-  const ready = State.upgradeCount(u, 'shield') * state.rules.upgrades.shieldAbsorb - (u.shieldSpent | 0);
-  if (ready > 0 && damage > 0) {
-    absorbed = Math.min(ready, damage);
-    damage -= absorbed;
-    u.shieldSpent = (u.shieldSpent | 0) + absorbed;
-  }
-
   // `fracture` adds 3 the next time the unit takes 3 or more COMBAT damage from one attack, then
   // clears. Direct damage from an ability never triggers it (rulebook 2026-10-30, "Fracture").
   const fi = u.statuses.indexOf('fracture');
@@ -456,11 +451,29 @@ export function dealDamage(state, ref, hits, bySide, combat, opts) {
     fractured = true;
   }
 
+  // Shields come after every other effect on the damage, Fracture included (rulebook 2026-10-30, "Damage and
+  // Shields"). Each active Shield prevents one point and then deactivates until its holder next activates
+  // (rulebook 2026-10-30, "Shield Upgrades"). Shields also stop collision damage.
+  const ready = State.upgradeCount(u, 'shield') * state.rules.upgrades.shieldAbsorb - (u.shieldSpent | 0);
+  if (ready > 0 && damage > 0) {
+    absorbed = Math.min(ready, damage);
+    damage -= absorbed;
+    u.shieldSpent = (u.shieldSpent | 0) + absorbed;
+  }
+
   u.hp -= damage;
   // a response that keeps a unit standing at 1 HP instead of being defeated
   if (opts && opts.floorHp && u.hp < opts.floorHp) {
     u.hp = opts.floorHp;
     state.log.push({ t: 'survived', uid: u.uid, notice: true });
+  }
+
+  // Damage outside an attack that would defeat a unit whose owner can answer it: hold the unit at 1 HP and ask
+  // (the "would be defeated" window, which applies to any damage, not only an attack's).
+  if (u.hp <= 0 && opts && opts.mayBeSaved && !state.pending && Attack.defeatSavable(state, u)) {
+    u.hp = 1;
+    state.pending = { kind: 'window', window: 'wouldBeDefeated', role: 'defender', side: u.side, uid: u.uid, outside: true, by: bySide, cont: null };
+    return { damage: damage, destroyed: false, absorbed: absorbed, fractured: fractured, held: true };
   }
 
   if (u.hp <= 0) {
@@ -493,7 +506,8 @@ export function dealDamage(state, ref, hits, bySide, combat, opts) {
 export function destroyUnit(state, u, bySide) {
   u.alive = false;
   u.hp = 0;
-  state.players[bySide].vp += u.vp;
+  // the defeated unit's opponent scores it, whoever dealt the last damage (rulebook 2026-10-30, "Defeated Units")
+  state.players[u.side === 0 ? 1 : 0].vp += u.vp;
   const from = u.hex ? { q: u.hex.q, r: u.hex.r } : null;
 
   const redeploys = canRedeploy(state, u.side);
@@ -553,5 +567,5 @@ export function refreshShield(state, uid) {
 Attack.bindCombat({
   targetHex: targetHex, strengthOf: strengthOf, accuracyShift: accuracyShift, isHit: isHit, critFromFor: critFromFor,
   previewDamage: previewDamage, dealDamage: dealDamage, applyStatus: applyStatus, weapon: weapon,
-  targetsFor: targetsFor, reactMoves: reactMoves
+  targetsFor: targetsFor, reactMoves: reactMoves, destroyUnit: destroyUnit
 });

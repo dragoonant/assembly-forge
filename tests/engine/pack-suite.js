@@ -88,5 +88,11 @@ T.suite('content packs', function () {
   T.test('a malformed pack is rejected loudly', function () {
     T.throws(function () { Packs.registerPack({ id: 'bad', units: {}, teams: { x: { units: ['nope'] } }, teamOrder: ['x'], names: {} }); });
     T.throws(function () { Packs.registerPack({ id: 'ours', units: {}, teams: {}, teamOrder: [], names: {} }); });
+    const p = testPack();
+    p.id = 'dupes';
+    p.teams.tp_a.units = ['p1', 'p1', 'p2'];
+    T.throws(function () { Packs.registerPack(p); }, 'a repeated unit that is not mass-produced');
+    p.units.p1.traits = ['assault', 'mass-produced'];
+    Packs.registerPack(p);
   });
 });

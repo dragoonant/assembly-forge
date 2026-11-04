@@ -7,6 +7,7 @@ import * as TextJs from '../content/abilitytext.js'
 import * as NamesJs from '../content/names.js'
 import * as SkirmishJs from '../content/scenarios/skirmish.js'
 import * as TeamsJs from '../content/teams.js'
+import * as TacticsJs from '../content/tactics.js'
 import * as PacksJs from '../content/packs.js'
 import * as UnitsJs from '../content/units.js'
 import * as ActionsJs from '../engine/actions.js'
@@ -95,6 +96,7 @@ export interface TacticsCard {
   cid: string
   timing: string
   target?: string
+  requires?: { defId?: string; trait?: string } | null
   effects: { k: string; n?: number; s?: string }[]
 }
 
@@ -112,7 +114,10 @@ export interface LogEntry {
 }
 
 export interface Pending {
-  kind: 'window' | 'react_move' | 'react_attack' | 'displace'
+  kind: 'window' | 'react_move' | 'react_attack' | 'displace' | 'trigger'
+  aid?: string
+  optional?: boolean
+  targets?: (string | null)[]
   mode?: 'push' | 'pull'
   left?: number
   window?: string
@@ -206,8 +211,18 @@ export const Packs = {
 }
 export const SCENARIO_ID: string = Skirmish.SCENARIO_ID
 
-export function newSkirmish(seed: string, playerTeam?: string, enemyTeam?: string): GameState {
-  return State.createGame(Skirmish.skirmish({ seed, playerTeam, enemyTeam })) as GameState
+export function newSkirmish(seed: string, playerTeam?: string, enemyTeam?: string, decks?: [string[] | null, string[] | null]): GameState {
+  return State.createGame(Skirmish.skirmish({ seed, playerTeam, enemyTeam, decks })) as GameState
+}
+
+/** Deck building: the cards a squad may take, the suggested nine, and whether a choice is legal. */
+export const Decks = {
+  size: 9,
+  pool: (defIds: string[]): string[] => (TacticsJs as any).deckPool(defIds.map((d) => (UnitsJs as any).def(d))),
+  suggested: (defIds: string[]): string[] => (TacticsJs as any).buildDeck(defIds.map((d) => (UnitsJs as any).def(d))),
+  legal: (cids: string[], defIds: string[]): boolean =>
+    (TacticsJs as any).isLegalDeck(cids, defIds.map((d) => (UnitsJs as any).def(d))),
+  card: (cid: string): TacticsCard => (TacticsJs as any).card(cid),
 }
 
 export function squadsFor(playerTeam: string | null, enemyTeam: string | null): [string[], string[]] {

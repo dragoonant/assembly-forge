@@ -171,10 +171,13 @@ function step(state, a) {
       if (di !== -1) {
         attacker.statuses.splice(di, 1);
         a.disarmed = true;
-        const shift = combat.accuracyShift(state, attacker, w, combat.targetHex(state, a.targets[0]) || attacker.hex);
+        // a die is rerolled when it hits any target (on an area attack the targets can differ in accuracy)
+        const shifts = livingTargets(state, a).map(function (r) { return combat.accuracyShift(state, attacker, w, combat.targetHex(state, r)); });
+        if (!shifts.length) shifts.push(0);
         const again = [];
         for (let i = 0; i < a.faces.length; i++) {
-          if (combat.isHit(a.faces[i], shift, state.rules.combat, a.critFrom)) {
+          const f = a.faces[i];
+          if (shifts.some(function (sh) { return combat.isHit(f, sh, state.rules.combat, a.critFrom); })) {
             const r = Rng.roll(state.rng, state.rules.combat.dieSides);
             state.rng = r.state;
             a.faces[i] = r.value;
@@ -215,6 +218,14 @@ function step(state, a) {
         if (a.critRolls) for (const f of a.critRolls) if (combat.isHit(f, shift, state.rules.combat, a.critFrom)) hits++;
         return { ref: ref, hits: hits, shift: shift, damage: 0, destroyed: false };
       });
+      // Critical hit effects resolve before damage (rulebook 2026-10-30, attack steps 7 and 8), so a Fracture from a
+      // crit already counts against this attack's damage.
+      if (a.critFired && w.crit.status) {
+        for (const res of a.results) {
+          if (res.gone || res.ref.kind !== 'unit' || res.hits <= 0) continue;
+          if (combat.applyStatus(state, res.ref.id, w.crit.status)) res.status = w.crit.status;
+        }
+      }
       a.ti = 0;
       advance(a);
       return;
@@ -247,10 +258,6 @@ function step(state, a) {
       res.destroyed = dealt.destroyed;
       if (dealt.absorbed) res.absorbed = dealt.absorbed;
       if (dealt.fractured) res.fractured = true;
-      // A crit's status lands after damage, and only on something still standing.
-      if (a.critFired && w.crit.status && !dealt.destroyed && ref.kind === 'unit' && res.hits > 0) {
-        if (combat.applyStatus(state, ref.id, w.crit.status)) res.status = w.crit.status;
-      }
       res.done = true;
       a.ti++;
       // a saved unit's response (move, then attack) resolves before the next target
@@ -349,6 +356,15 @@ export function windowOptions(state, a, window, role) {
   for (const c of state.players[side].tactics.hand) {
     if (c.timing !== 'response' || c.window !== window || c.role !== role) continue;
     if (!responseRequirementMet(state, a, c, role)) continue;
+    if (c.pick === 'one' && role === 'defender') {
+      // "a defender": one option per own unit under attack, and the card covers only that one
+      for (const r of a.targets) {
+        if (r.kind === 'unit' && state.units[r.id] && state.units[r.id].side === side && state.units[r.id].alive) {
+          out.push({ type: 'respond', side: side, cid: c.cid, targetUid: r.id });
+        }
+      }
+      continue;
+    }
     out.push({ type: 'respond', side: side, cid: c.cid });
   }
   return out;
@@ -379,6 +395,21 @@ function offerWindow(state, a, window, role) {
   return true;
 }
 
+/**
+ * Could this unit's owner answer its defeat outside an attack right now? Only between attacks, so the decision never
+ * interleaves with an attack in progress.
+ * @param {Object} state
+ * @param {Object} t the unit
+ * @returns {boolean}
+ */
+export function defeatSavable(state, t) {
+  if (!state.activation || (state.attacks && state.attacks.length)) return false;
+  if (!tacticsFree(state, t.side)) return false;
+  return state.players[t.side].tactics.hand.some(function (c) {
+    return c.timing === 'response' && c.window === 'wouldBeDefeated' && (!c.requires || !c.requires.defId || c.requires.defId === t.defId);
+  });
+}
+
 function offerDefeatWindow(state, a, t) {
   const side = t.side;
   if (!tacticsFree(state, side)) return false;
@@ -396,6 +427,7 @@ export function pendingOptions(state) {
   const a = current(state);
   if (!p) return [];
   if (p.kind === 'displace') return Displace.options(state);
+  if (p.kind === 'trigger') return Effects.triggerOptions(state);
   if (p.kind === 'window') {
     let opts;
     if (p.window === 'wouldBeDefeated') {
@@ -435,6 +467,10 @@ export function decide(state, action) {
   const a = current(state);
   state.pending = null;
 
+  if (p.kind === 'window' && p.outside) {
+    decideOutsideSave(state, action, p);
+    return;
+  }
   if (p.kind === 'window') {
     if (action.type === 'respond') playResponse(state, a, action, p);
     if (a && p.window !== 'wouldBeDefeated') advance(a);
@@ -444,16 +480,45 @@ export function decide(state, action) {
       const from = { q: u.hex.q, r: u.hex.r };
       u.hex = { q: action.to.q, r: action.to.r };
       state.log.push({ t: 'move', uid: u.uid, from: from, to: { q: u.hex.q, r: u.hex.r }, path: action.path, cost: action.cost });
+      State.collectPickup(state, u);
     }
-    if (p.wid) state.pending = { kind: 'react_attack', uid: p.uid, wid: p.wid, aid: p.aid };
+    if (p.wid) state.pending = { kind: 'react_attack', uid: p.uid, wid: p.wid, aid: p.aid, cont: p.cont };
+    else if (p.cont) Effects.resumeEffects(state, p.cont, combat);
   } else if (p.kind === 'react_attack') {
-    if (action.type === 'react_attack') {
+    // a save outside an attack: the rest of the ability that dealt the damage resolves first, then the strike back
+    if (p.cont) Effects.resumeEffects(state, p.cont, combat);
+    if (action.type === 'react_attack' && !state.pending) {
       const u = state.units[action.uid];
       start(state, { uid: u.uid, weapon: combat.weapon(u, action.wid), targets: [action.target], free: true });
       return;
     }
   }
   run(state);
+}
+
+/** The would-be-defeated decision outside an attack: survive at 1 HP and react, or be defeated. */
+function decideOutsideSave(state, action, p) {
+  const u = state.units[p.uid];
+  if (action.type !== 'respond') {
+    u.hp = 0;
+    combat.destroyUnit(state, u, p.by);
+    Effects.resumeEffects(state, p.cont, combat);
+    return;
+  }
+  const hand = state.players[p.side].tactics.hand;
+  const c = hand.splice(hand.findIndex(function (x) { return x.cid === action.cid; }), 1)[0];
+  state.players[p.side].tactics.discard.push(c);
+  if (!state.activation.tacticsBy) state.activation.tacticsBy = {};
+  state.activation.tacticsBy[p.side] = true;
+  if (p.side === state.activation.side) state.activation.slots.tactics = true;
+  state.log.push({ t: 'tactics', cid: c.cid, side: p.side, uid: u.uid, notice: true });
+  state.log.push({ t: 'survived', uid: u.uid, notice: true });
+  const e = c.effects.find(function (x) { return x.k === 'surviveDefeat'; }) || {};
+  if (e.move || e.attackWid) {
+    state.pending = { kind: 'react_move', uid: u.uid, n: e.move || 0, wid: e.attackWid || null, aid: null, cont: p.cont };
+  } else {
+    Effects.resumeEffects(state, p.cont, combat);
+  }
 }
 
 function playResponse(state, a, action, p) {
@@ -472,7 +537,11 @@ function playResponse(state, a, action, p) {
       case 'attackStrength': a.strengthBonus += e.n; break;
       case 'attackDamage': a.damageBonus += e.n; break;
       case 'reduceDamage':
-        for (const r of a.targets) if (r.kind === 'unit' && state.units[r.id] && state.units[r.id].side === side) a.reduce[refKey(r)] = (a.reduce[refKey(r)] || 0) + e.n;
+        for (const r of a.targets) {
+          if (r.kind !== 'unit' || !state.units[r.id] || state.units[r.id].side !== side) continue;
+          if (action.targetUid && r.id !== action.targetUid) continue;
+          a.reduce[refKey(r)] = (a.reduce[refKey(r)] || 0) + e.n;
+        }
         break;
       case 'stripTargetUpgrade':
         for (const r of livingTargets(state, a)) stripUpgrade(state, r, e.n || 1);

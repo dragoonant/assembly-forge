@@ -66,13 +66,24 @@ T.suite('deployment', function () {
     const kinds = types(s);
     T.ok(kinds.length > 0);
     for (let i = 0; i < kinds.length; i++) {
-      T.ok(kinds[i] === 'advance' || kinds[i] === 'dash', 'only movement while on the Base, got ' + kinds[i]);
+      T.ok(kinds[i] === 'advance' || kinds[i] === 'dash' || kinds[i] === 'command' || kinds[i] === 'tactics',
+        'only movement, Commands and non-attack cards while on the Base, got ' + kinds[i]);
     }
     const step = Actions.legalActions(s).filter(function (a) { return a.type === 'advance'; })[0];
     s = Apply.apply(s, step);
     const after = types(s);
     T.ok(after.indexOf('energize') !== -1, 'a full turn opens up once off the Base');
     T.ok(after.indexOf('advance') === -1, 'and the Advance is spent');
+  });
+
+  T.test('a deployed unit may use a Command before stepping off its Base', function () {
+    let s = reserveGame();
+    s.units.a1.abilities = [{ aid: 'boost', timing: 'command', target: 'self', effects: [{ k: 'accuracy', n: 1 }] }];
+    s = Apply.apply(s, { type: 'deploy', uid: 'a1', to: BASES[0].hex });
+    T.ok(types(s).indexOf('command') !== -1, 'the Command is offered');
+    T.eq(types(s).indexOf('energize'), -1, 'but not a Primary that would leave it on the Base');
+    s = Apply.apply(s, { type: 'command', uid: 'a1', aid: 'boost' });
+    T.ok(types(s).indexOf('advance') !== -1, 'and it can still step off');
   });
 
   T.test('no move may end on a Base, and an enemy Base cannot be moved through', function () {

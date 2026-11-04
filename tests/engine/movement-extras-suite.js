@@ -8,7 +8,7 @@ import * as F from './fixtures.js';
 import * as Actions from '../../src/engine/actions.js';
 import * as Apply from '../../src/engine/apply.js';
 import * as Combat from '../../src/engine/combat.js';
-import * as Effects from '../../src/engine/effects.js';
+import * as Displace from '../../src/engine/displace.js';
 import * as Hex from '../../src/engine/hex.js';
 import * as State from '../../src/engine/state.js';
 
@@ -69,6 +69,16 @@ T.suite('hover', function () {
   });
 });
 
+/** Push or Pull, always taking the lowest-keyed hex (collision or not), as the old deterministic rule did. */
+function displaceAuto(s, source, uid, n, mode) {
+  if (!Displace.begin(s, source, uid, n, mode, null, null)) return false;
+  while (s.pending && s.pending.kind === 'displace') {
+    const o = Displace.stepOptions(s, s.pending)[0];
+    Displace.decide(s, { type: 'displace', side: s.pending.side, uid: uid, to: o.to, collide: o.collide }, Combat);
+  }
+  return true;
+}
+
 T.suite('push and pull', function () {
   function setup(extra) {
     return State.clone(F.game(Object.assign({
@@ -78,14 +88,14 @@ T.suite('push and pull', function () {
 
   T.test('push moves the target away, hex by hex', function () {
     const s = setup();
-    Effects.displace(s, s.units.a1, 'b1', 2, 'push', Combat);
+    displaceAuto(s, s.units.a1, 'b1', 2, 'push');
     T.eq(Hex.distance(s.units.a1.hex, s.units.b1.hex), 3);
   });
 
   T.test('a push into higher ground is a collision for 2 damage', function () {
     const s = setup({ arena: { hexes: { '2,0': { elevation: 1 }, '2,-1': { elevation: 1 }, '1,1': { elevation: 1 } } } });
     const hp = s.units.b1.hp;
-    Effects.displace(s, s.units.a1, 'b1', 2, 'push', Combat);
+    displaceAuto(s, s.units.a1, 'b1', 2, 'push');
     T.ok(Hex.equals(s.units.b1.hex, H(1, 0)), 'it stays put');
     T.eq(s.units.b1.hp, hp - 2);
   });
@@ -100,7 +110,7 @@ T.suite('push and pull', function () {
         F.unit('b4', 'u04', 1, H(1, 1), { tl: 5, hp: 20 })
       ]
     }));
-    Effects.displace(s, s.units.a1, 'b1', 1, 'push', Combat);
+    displaceAuto(s, s.units.a1, 'b1', 1, 'push');
     T.eq(s.units.b1.hp, 18, 'the pushed unit');
     const hurt = ['b2', 'b3', 'b4'].filter(function (id) { return s.units[id].hp === 18; });
     T.eq(hurt.length, 1, 'and exactly the one it hit');
@@ -110,15 +120,15 @@ T.suite('push and pull', function () {
     const s = State.clone(F.game({
       units: [F.unit('a1', 'u02', 0, H(0, 0), { tl: 1 }), F.unit('b1', 'u06', 1, H(3, 0), { tl: 5 })]
     }));
-    Effects.displace(s, s.units.a1, 'b1', 1, 'pull', Combat);
+    displaceAuto(s, s.units.a1, 'b1', 1, 'pull');
     T.eq(Hex.distance(s.units.a1.hex, s.units.b1.hex), 2);
     const adj = setup();
-    T.notOk(Effects.displace(adj, adj.units.a1, 'b1', 1, 'pull', Combat));
+    T.notOk(displaceAuto(adj, adj.units.a1, 'b1', 1, 'pull'));
   });
 
   T.test('push and pull ignore terrain and Engagement, and only the pushed unit moves', function () {
     const s = setup({ arena: { hexes: { '2,0': { terrain: 'water' }, '3,0': { terrain: 'water' } } } });
-    Effects.displace(s, s.units.a1, 'b1', 2, 'push', Combat);
+    displaceAuto(s, s.units.a1, 'b1', 2, 'push');
     T.eq(Hex.distance(s.units.a1.hex, s.units.b1.hex), 3);
     T.ok(Hex.equals(s.units.a1.hex, H(0, 0)));
     T.ok(Actions.legalActions(s).length > 0);

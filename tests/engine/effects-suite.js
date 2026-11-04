@@ -87,18 +87,16 @@ T.suite('command abilities', function () {
     T.ok(!s.activation || s.activation.uid !== 'a1' || s.activation.mods.strength === 0);
   });
 
-  T.test('"move" reopens the movement block', function () {
-    // An ability that says "move 2" has to work after the unit has stopped, or
-    // it only functions on a turn the unit had not yet moved -- which is not
-    // what it says.
+  T.test('"move" is an additional Move, usable after the Advance', function () {
+    // Movement from cards and abilities is in addition to the Advance (rulebook 2026-10-30, "Advance").
     const g = withAbilities([
       { aid: 'x', timing: 'command', energy: 1, target: 'self', effects: [{ k: 'move', n: 2 }] }
     ]);
-    let s = T.act(g, { type: 'energize' });          // closes the movement block
-    T.ok(s.activation.movementClosed, 'movement is shut');
+    let s = T.act(g, function (a) { return a.type === 'advance'; });
     s = T.act(s, function (a) { return a.type === 'command'; });
-    T.notOk(s.activation.movementClosed, 'and the ability reopened it');
-    T.ok(T.findAll(s, function (a) { return a.type === 'advance'; }).length > 0);
+    const moves = T.findAll(s, function (a) { return a.type === 'move'; });
+    T.ok(moves.length > 0, 'a granted Move after the Advance');
+    T.ok(moves.every(function (m) { return m.cost <= 2; }), 'of up to two hexes');
   });
 
   T.test('a targeted ability lists one action per enemy in range', function () {

@@ -173,8 +173,10 @@ export const LAYOUT = Object.freeze({
 });
 
 /**
- * @param {Object} [opts] `{seed, rules, playerTeam, enemyTeam}` — team ids from
- *        `src/content/teams.js`. The same id on both sides is a legal mirror.
+ * @param {Object} [opts] `{seed, rules, playerTeam, enemyTeam, decks}` — team ids from
+ *        `src/content/teams.js`. The same id on both sides is a legal mirror. `decks` is an optional
+ *        `[cids | null, cids | null]`, the players' own choice of cards; a side without a legal choice gets the
+ *        suggested deck.
  * @returns {Object} a spec for `State.createGame`
  */
 export function skirmish(opts) {
@@ -186,6 +188,9 @@ export function skirmish(opts) {
   }
 
   const squads = squadsFor(o.playerTeam, o.enemyTeam);
+  // nine cards, plus three for each Phase beyond two (rulebook 2026-10-30, "Building a Deck")
+  const phases = (o.rules && o.rules.match && o.rules.match.phasesPerGame) || 2;
+  const size = 9 + 3 * Math.max(0, phases - 2);
 
   const units = [];
   const decks = [[], []];
@@ -200,7 +205,9 @@ export function skirmish(opts) {
     }
     // Each side gets the deck its own squad qualifies for, so the two decks
     // differ -- which is the point of gating cards on traits.
-    decks[side] = Tactics.buildDeck(defs).map(function (cid) {
+    const chosen = o.decks && o.decks[side];
+    const cids = chosen && Tactics.isLegalDeck(chosen, defs, size) ? chosen.slice() : Tactics.buildDeck(defs, size);
+    decks[side] = cids.map(function (cid) {
       return JSON.parse(JSON.stringify(Tactics.card(cid)));
     });
   }

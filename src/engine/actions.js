@@ -51,7 +51,7 @@ export function actionKey(action) {
   if (action.cid) parts.push(action.cid);
   if (action.area !== undefined) parts.push('a' + action.area);
   if (action.grant !== undefined) parts.push('g' + action.grant);
-  if (action.side !== undefined && (action.type === 'respond' || action.type === 'pass' || action.type === 'displace_stop')) parts.push('s' + action.side);
+  if (action.side !== undefined && (action.type === 'respond' || action.type === 'pass' || action.type === 'displace_stop' || action.type === 'trigger_skip')) parts.push('s' + action.side);
   if (action.collide) parts.push('x');
   return parts.join('|');
 }
@@ -139,24 +139,18 @@ export function legalActions(state) {
 
   // Granted additional actions (rulebook 2026-10-30, "Additional Actions"): each at no Timeline cost, taken once, and
   // not part of the movement block, so a granted Dash or Move works even after the unit has attacked.
+  // A chained grant whose first part cannot happen resolves as much as it can (rulebook, partial resolution): its next
+  // part is offered directly, marked `skipped`.
   for (let gi = 0; gi < (act.grants || []).length; gi++) {
-    const g = act.grants[gi];
-    if (g.kind === 'dash') {
-      for (const m of movementOptions(state, act.uid, rules.movement.dashHexes + dashBonus(state, u))) {
-        out.push({ type: 'dash', uid: u.uid, to: m.to, path: m.path, cost: m.cost, free: true, grant: gi });
-      }
-    } else if (g.kind === 'move') {
-      for (const m of movementOptions(state, act.uid, g.n, { ignoreEngagement: g.ignoreEngagement })) {
-        out.push({ type: 'move', uid: u.uid, to: m.to, path: m.path, cost: m.cost, grant: gi });
-      }
-    } else if (g.kind === 'attack') {
-      const w = Combat.weapon(u, g.wid);
-      if (w) {
-        for (const opt of attackOptions(state, u, w)) {
-          out.push(Object.assign({ type: 'attack', uid: u.uid, wid: w.wid, tlCost: 0, free: true, grant: gi }, opt));
-        }
-      }
+    let g = act.grants[gi];
+    let skipped = 0;
+    let opts = grantOptions(state, u, g, gi);
+    while (!opts.length && g.then) {
+      g = g.then;
+      skipped++;
+      opts = grantOptions(state, u, g, gi).map(function (o) { return Object.assign(o, { skipped: skipped }); });
     }
+    for (const o of opts) out.push(o);
   }
 
   // Slot C: Command abilities. Free, once each, in any order, and usable at
@@ -205,7 +199,13 @@ export function legalActions(state) {
   // (rulebook 2026-10-30, "Deploying your Units"). `deployOptions` only offers a deployment that has
   // a way off, so this list is never empty in play; the end_activation fallback is a wedge guard.
   if (State.baseAt(state, u.hex) && rules.movement.noEndOnBase) {
-    const off = out.filter(function (a) { return a.type === 'advance' || a.type === 'dash'; });
+    // Only the moves off it, plus what never ends or interrupts a move: Commands and non-attack Tactics cards.
+    const off = out.filter(function (a) {
+      if (a.type === 'advance' || a.type === 'dash' || a.type === 'move' || a.type === 'command') return true;
+      if (a.type !== 'tactics') return false;
+      const c = state.players[act.side].tactics.hand.find(function (x) { return x.cid === a.cid; });
+      return Boolean(c) && c.timing !== 'attack';
+    });
     if (!off.length) off.push({ type: 'end_activation', uid: u.uid });
     return sortActions(off);
   }
@@ -372,6 +372,28 @@ export function resolveLegal(state, action) {
   return null;
 }
 
+/** The actions one granted additional action offers, ignoring anything chained after it. */
+function grantOptions(state, u, g, gi) {
+  const out = [];
+  if (g.kind === 'dash') {
+    for (const m of movementOptions(state, u.uid, state.rules.movement.dashHexes + dashBonus(state, u))) {
+      out.push({ type: 'dash', uid: u.uid, to: m.to, path: m.path, cost: m.cost, free: true, grant: gi });
+    }
+  } else if (g.kind === 'move') {
+    for (const m of movementOptions(state, u.uid, g.n, { ignoreEngagement: g.ignoreEngagement })) {
+      out.push({ type: 'move', uid: u.uid, to: m.to, path: m.path, cost: m.cost, grant: gi });
+    }
+  } else if (g.kind === 'attack') {
+    const w = Combat.weapon(u, g.wid);
+    if (w) {
+      for (const opt of attackOptions(state, u, w)) {
+        out.push(Object.assign({ type: 'attack', uid: u.uid, wid: w.wid, tlCost: 0, free: true, grant: gi }, opt));
+      }
+    }
+  }
+  return out;
+}
+
 // --- Movement ----------------------------------------------------------------
 
 /**
@@ -527,7 +549,7 @@ export function canPassThrough(state, u, h, jumpFrom) {
 
   // Enemy structures, such as Bases, may not be moved through; allied ones may.
   const b = State.baseAt(state, h);
-  if (b && b.side !== u.side && state.rules.movement.enemyBaseBlocks) return false;
+  if (b && b.side !== u.side && state.rules.movement.enemyBaseBlocks && !over) return false;
 
   return true;
 }

@@ -30,6 +30,11 @@ Mechanics only, as everywhere in this project: no names, no rulebook wording. Co
 | Water | +1 to enter; -1 attacking into it | No entry cost; a move started in it loses a hex; -1 into, -1 from, -2 both | `terrain.water` |
 | Upgrade pickup | Moving onto or through | Ending a move on it, or deploying onto it | `state.pickups` |
 | Slow | Consumed when the activation opens | The next Advance moves 0 hexes and spends it; Dash unaffected | — |
+| Movement block | No movement once another action is taken | A move cannot be interrupted, but a unit may act, then move | `movement.oneBlock` (off) |
+| "Move N" effects | A bonus to the Advance | An additional Move action, usable after the Advance | `effects.js` `move` |
+| Crit statuses | Applied after damage | Applied in the crit step, before damage, so a crit Fracture counts at once | `attack.js` `crits` |
+| Fracture and Shields | Shields, then Fracture | Fracture, then Shields (Shields come after every other effect) | `combat.js` `dealDamage` |
+| Defeat VP | To whoever dealt the damage | To the defeated unit's opponent; an own Garrison scores nobody | `combat.js` |
 | Disarm | While held | The next attack only | — |
 | Fracture | Any damage | Combat damage only | — |
 | Defensive Tactics lockout | On | Not in the rulebook; off | `tactics.lockoutAfterDefensivePlay` |
@@ -60,11 +65,11 @@ Energy uncapped; Garrisons fall to any damage; Rescue and Garrison kills are 2 V
 ## Simplifications (our choices, recorded so they can be revisited)
 
 1. **An occupied Base is unavailable** rather than treated "as though it were empty". No unit may
-   end a move on a Base, so this only arises after a Push or Pull onto one, which no content does.
+   end any move on a Base, and a Push or Pull into one is a collision, so this cannot arise.
 2. *(Resolved 2026-11-03.)* Push and Pull are now the acting player's choice, hex by hex, with
    collisions and stopping early; see `src/engine/displace.js`.
-3. **Automatic decks.** A pack's nine-card deck is built for each side (its squad's signature cards, then open cards
-   in the pack's order) rather than chosen by the player.
+3. *(Resolved 2026-11-03.)* Players pick their own nine cards on the briefing screen; the AI side takes the
+   suggested deck.
 4. **The accuracy cap of plus or minus five** stays. No source has a cap; the natural 1, 9 and 10
    rules make it harmless.
 5. **The forced pass** (`actions.forcedPassTlCost`) stays as a wedge guard. It never fires in play:
@@ -80,6 +85,32 @@ or repeat the attack; weapon effects before the roll, after it and after damage;
 chain; weapon-specific and conditional bonuses; Attack cards replacing the Primary Attack; one Tactics card per player
 per activation. Tests: `tests/engine/mechanics-suite.js`.
 
+## Audit of 2026-11-03
+
+Every rulebook section and every card in the local pack was checked against the code. Fixed:
+
+| Rule | Was | Now | Tests |
+| --- | --- | --- | --- |
+| Area patterns | Shapes misread from the card diagrams | 60-degree wedges, d + 1 hexes at each distance | mechanics-suite: card audit fixes |
+| Triggered unit responses | Always the first target | The owner picks a target; responses marked `optional` can be declined | triggered unit responses |
+| "A defender" response cards | Covered every defending unit | Cover the one unit the defender picks | card audit fixes |
+| Chained grants | The follow-up waited on the first part | A first part with no options is skipped and the next part offered | card audit fixes |
+| Would-be-defeated window | Attack damage only | Also ability damage (including a unit's own) | card audit fixes |
+| Push or Pull into a Base | A plain move | A collision | rulebook audit fixes |
+| Deployed unit on its Base | Advance or Dash only | Also Commands and non-attack cards before stepping off | deploy-suite |
+| Jump | Blocked by a lower enemy Base | Passes over it, like a lower enemy | — |
+| Reaction moves | Ignored pickups | Collect them | rulebook audit fixes |
+| Disarm on an area attack | Judged against the first target | Rerolls a die that hits any target | — |
+| [Range N] abilities | No line of sight | Need it (`los`); "within N hexes" still does not | rulebook audit fixes |
+| Dash and Rescue | Timeline paid after resolving | Paid on declaring | — |
+| Deck size | Always nine | Nine plus three per Phase beyond two | rulebook audit fixes |
+| Squads | Repeats allowed | A unit appears once unless it is `mass-produced` | pack-suite |
+
+Judgement calls kept as they are: Push off the board edge just stops; area patterns rotate but do not mirror;
+"one Tactics card per activation" is per player; a crit's "after combat damage" effects fire even on an attack that
+dealt none; when an Upgrade is destroyed it is the oldest; a card that captures "an Objective" near its target takes
+the first in board order; collision damage does not open the would-be-defeated window.
+
 ## Deferred until content needs them (PLAN.md D10)
 
 Carriers, remote weapon tokens, Reinforcements, carried Objectives, Challenge, Swap, Reposition,
@@ -91,17 +122,20 @@ additional actions.
 The rule changes moved the scoring economy, so the roster was re-tuned by self-play
 (`node tools/ai-selfplay.js 96 pairs=all`, every team pairing from both seats):
 
-| Team | Before | After |
-| --- | --- | --- |
-| t_lance | 21% | 47% |
-| t_hammer | 58% | 50% |
-| t_anvil | 83% | 53% |
-| t_spear | 29% | 50% |
+| Team | Before | After | After the 2026-11-03 audit |
+| --- | --- | --- | --- |
+| t_lance | 21% | 47% | 58% |
+| t_hammer | 58% | 50% | 56% |
+| t_anvil | 83% | 53% | 44% |
+| t_spear | 29% | 50% | 42% |
 
 Changes: the zone controller (u06) went from 18 HP and 5 VP to 13 HP and 7 VP, with its mortar at
 range 3 and strength 5. The glass cannon (u03) went from 9 HP and 9 VP to 11 and 7. The skirmisher
 (u02) went from 11 HP and 7 VP to 12 and 6, and its melee strike costs 3 Timeline instead of 4. The
 berserker (u05) dropped from 10 VP to 8, and the bruiser (u04) from 8 to 7.
+
+Moving after attacking pushed t_hammer to 69%, so after the audit: the berserker (u05) went to 16 HP and 9 VP, the
+bruiser (u04) to 13 HP, the skirmisher (u02) to 13 HP, and the glass cannon (u03) to 12 HP and 6 VP.
 
 Seats are even in mirror matches (23 to 25 over 48 games). Mixed games have run about 57% to side 0
 across several runs with unpaired seeds; that is within noise for now and worth re-checking with

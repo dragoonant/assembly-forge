@@ -168,7 +168,9 @@ export function scoreAction(state, action, side) {
     case 'react_attack': return scoreAttack(state, Object.assign({}, action, { free: true }), side) + 1;
     case 'respond':  return scoreResponse(state, action, side);
     case 'displace':
-    case 'displace_stop': return scoreDisplace(state, action, side);
+    case 'displace_stop':
+    case 'trigger':
+    case 'trigger_skip': return scoreDisplace(state, action, side);
     case 'pass':     return 0;
     case 'command':  return scoreCommand(state, action, side);
     case 'tactics':  return scoreTactics(state, action, side);
@@ -273,7 +275,7 @@ export function scoreDisplace(state, action, side) {
   } catch (e) {
     return -TUNING.wasted;
   }
-  return Evaluate.evaluate(after, side) - before + (action.type === 'displace_stop' ? 0 : 0.5);
+  return Evaluate.evaluate(after, side) - before + (action.type === 'displace_stop' || action.type === 'trigger_skip' ? 0 : 0.5);
 }
 
 /**

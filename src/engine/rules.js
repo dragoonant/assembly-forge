@@ -125,17 +125,16 @@ export const DEFAULTS = {
 
     /**
      * A unit may not finish a movement action on the hex it began that action
-     * on -- so it cannot spend an Advance walking in a circle to dodge the
-     * "movement is one block" rule. Unverified, but harmless if wrong.
+     * on. Authoritative (rulebook 2026-10-30, "Moving").
      */
     noEndOnStartHex: true,
 
     /**
-     * Movement is one unsplittable block: once the unit has stopped and done
-     * something else, it cannot move again this activation. Advance and Dash
-     * together form one block, in either order.
+     * Off (rulebook 2026-10-30, "Moving"): the rulebook only forbids taking an action in the middle of a move ("move
+     * one hex, make an attack, and then resume moving"). A unit may attack, then Advance; every move is still one
+     * uninterrupted action. On, it is our old house rule: no movement once another action has been taken.
      */
-    oneBlock: true,
+    oneBlock: false,
 
     /** A unit may pass through friendly units and friendly Garrisons... */
     passThroughFriendly: true,
@@ -159,9 +158,8 @@ export const DEFAULTS = {
     noEndOnBase: true,
 
     /**
-     * The sources say enemy *units* block movement and say nothing about
-     * enemy Garrisons. We treat a Garrison as a physical object on the board
-     * and block movement through an enemy one. House decision.
+     * Enemy Garrisons block movement like enemy units. Authoritative
+     * (rulebook 2026-10-30, "Garrisons, Line of Sight, Movement, and Engagement").
      */
     enemyGarrisonBlocks: true,
 
@@ -427,7 +425,7 @@ export const DEFAULTS = {
         drawPerPhase: 3,
     drawOnlyAfterFirstPhase: false,
 
-    /** One card per unit turn. Unverified. */
+    /** Up to one Tactics card per activation. Authoritative (rulebook 2026-10-30, "Play a Tactics Card"). */
     onePerUnitTurn: true,
 
     /**
@@ -538,11 +536,11 @@ export const HOUSE_DECISIONS = Object.freeze([
   }),
   Object.freeze({
     path: 'statuses.fractureThreshold',
-    decision: 'Fracture fires at three damage, per the community glossary.'
+    decision: 'RESOLVED (rulebook 2026-10-30): Fracture fires at three combat damage, before Shields.'
   }),
   Object.freeze({
     path: 'statuses.fractureBonus',
-    decision: 'Fracture adds three damage, per the community glossary.'
+    decision: 'RESOLVED (rulebook 2026-10-30): Fracture adds three damage.'
   }),
   Object.freeze({
     path: 'upgrades.shieldAbsorb',

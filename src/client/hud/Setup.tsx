@@ -1,7 +1,7 @@
 // Squad select and the mission briefing, ported from the 2D game. Both are one flow and share one overlay.
-import { displayName, Names, Packs, roleName, SCENARIO_ID, sideName, squadsFor, teamName, teamNote, teamOrder, teamUnits } from '../engine'
+import { Decks, displayName, Names, Packs, roleName, SCENARIO_ID, sideName, squadsFor, teamName, teamNote, teamOrder, teamUnits, Text } from '../engine'
 import { choosePack } from '../packs'
-import { chooseTeam, deploy, toBrief, toSelect } from '../game'
+import { chooseTeam, deploy, resetDeck, toBrief, toggleDeckCard, toSelect } from '../game'
 import { HUMAN, useGame } from '../store'
 
 function Select() {
@@ -47,12 +47,55 @@ function Select() {
   )
 }
 
+/** The player's nine Tactics cards, picked from what the squad may take; starts on the suggested deck. */
+function DeckPicker({ squad }: { squad: string[] }) {
+  const myDeck = useGame((s) => s.myDeck)
+  const pool = Decks.pool(squad)
+  const suggested = Decks.suggested(squad)
+  const deck = myDeck ?? suggested
+  const full = deck.length >= Decks.size
+  return (
+    <div className="deck-picker" data-testid="deck-picker">
+      <h3>
+        Tactics deck <span className={deck.length === Decks.size ? 'dim' : 'warn'} data-testid="deck-count">{deck.length} / {Decks.size}</span>
+      </h3>
+      <p className="dim">Pick {Decks.size} cards, one of each. Signature cards need their unit in the squad.</p>
+      <div className="deck-grid">
+        {pool.map((cid) => {
+          const on = deck.indexOf(cid) !== -1
+          const c = Decks.card(cid)
+          return (
+            <button
+              key={cid}
+              className={'deck-card' + (on ? ' on' : '')}
+              data-testid={'deck-' + cid}
+              disabled={!on && full}
+              onClick={() => toggleDeckCard(cid, suggested)}
+            >
+              <strong>{Text.tacticsName(cid)}</strong>
+              {c.requires && c.requires.defId && <span className="sig">{displayName(c.requires.defId)}</span>}
+              <span className="dim">{Text.abilityText(c)}</span>
+            </button>
+          )
+        })}
+      </div>
+      {myDeck && (
+        <button className="deck-reset" onClick={resetDeck}>
+          Use the suggested deck
+        </button>
+      )}
+    </div>
+  )
+}
+
 function Brief() {
   const myTeam = useGame((s) => s.myTeam)
   const foeTeam = useGame((s) => s.foeTeam)
+  const myDeck = useGame((s) => s.myDeck)
   const S = Names.SETUP
   const brief = Names.SCENARIOS[SCENARIO_ID]
   const squads = squadsFor(myTeam, foeTeam)
+  const deckOk = !myDeck || Decks.legal(myDeck, squads[HUMAN])
   return (
     <div className="setup-panel brief" data-testid="brief">
       <div className="dim kicker">{S.briefTitle}</div>
@@ -79,9 +122,10 @@ function Brief() {
         ))}
       </div>
       {myTeam && myTeam === foeTeam && <p className="dim">{S.mirror}</p>}
+      <DeckPicker squad={squads[HUMAN]} />
       <div className="setup-foot">
         <button onClick={toSelect}>{S.back}</button>
-        <button className="setup-go" data-testid="deploy" onClick={() => deploy()}>
+        <button className="setup-go" data-testid="deploy" disabled={!deckOk} onClick={() => deploy()}>
           {S.deploy}
         </button>
       </div>

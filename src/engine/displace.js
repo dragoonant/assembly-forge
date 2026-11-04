@@ -4,7 +4,7 @@
  * The target moves one hex at a time, up to the effect's number. At each step the player whose effect it is picks any
  * neighbouring hex strictly further from the source (Push) or strictly closer to it (Pull). Terrain and Engagement cost
  * nothing. Choosing a hex that is higher ground, impassable, or occupied by a unit or Garrison is a collision: the
- * movement ends and everything involved takes 2 damage (non-combat, so Shields stop it and Fracture does not). The
+ * movement ends and everything involved takes 2 damage (a Base counts as a structure: the unit takes 2, the Base nothing) (non-combat, so Shields stop it and Fracture does not). The
  * board edge is simply not a choice. The player may stop early, because the effect moves "up to" its number; an enemy
  * already adjacent to the source at the same elevation cannot be Pulled at all.
  *
@@ -60,7 +60,7 @@ export function stepOptions(state, p) {
     if (!cell) continue; // the board edge: not a collision, just nowhere to go
     const kind = state.rules.terrain[cell.terrain];
     const blocked = cell.elevation > State.elevationAt(state, t.hex) || kind.impassable ||
-      Boolean(State.unitAt(state, h)) || Boolean(State.garrisonAt(state, h));
+      Boolean(State.unitAt(state, h)) || Boolean(State.garrisonAt(state, h)) || Boolean(State.baseAt(state, h));
     out.push({ to: { q: h.q, r: h.r }, collide: blocked });
   }
   out.sort(function (a, b) { return Hex.key(a.to) < Hex.key(b.to) ? -1 : 1; });

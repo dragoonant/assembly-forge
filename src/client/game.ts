@@ -31,7 +31,7 @@ export function newGame(): void {
   epoch++
   diceDone = null
   clearEffects()
-  setStore({ screen: 'select', myTeam: null, foeTeam: null, game: null, armed: null, selected: null, busy: false, dice: null })
+  setStore({ screen: 'select', myTeam: null, foeTeam: null, myDeck: null, game: null, armed: null, selected: null, busy: false, dice: null })
   music(true)
 }
 
@@ -39,12 +39,23 @@ export function newGame(): void {
 export function chooseTeam(tid: string): void {
   const order = teamOrder()
   const foe = order[Math.floor(Math.random() * order.length)]!
-  setStore({ myTeam: tid, foeTeam: foe })
+  setStore({ myTeam: tid, foeTeam: foe, myDeck: null })
   music(true)
 }
 
 export function toBrief(): void {
   if (getStore().myTeam) setStore({ screen: 'brief' })
+}
+
+/** Toggle a card in the player's deck, starting from the suggested nine. */
+export function toggleDeckCard(cid: string, suggested: string[]): void {
+  const cur = getStore().myDeck ?? suggested
+  const next = cur.indexOf(cid) === -1 ? cur.concat([cid]) : cur.filter((c) => c !== cid)
+  setStore({ myDeck: next })
+}
+
+export function resetDeck(): void {
+  setStore({ myDeck: null })
 }
 
 export function toSelect(): void {
@@ -53,12 +64,12 @@ export function toSelect(): void {
 
 /** Build the match and start playing. */
 export function deploy(seed?: string): void {
-  const { myTeam, foeTeam } = getStore()
+  const { myTeam, foeTeam, myDeck } = getStore()
   stopAI()
   epoch++
   clearEffects()
   music(false)
-  const game = newSkirmish(seed ?? 'game-' + Date.now(), myTeam ?? undefined, foeTeam ?? undefined)
+  const game = newSkirmish(seed ?? 'game-' + Date.now(), myTeam ?? undefined, foeTeam ?? undefined, [myDeck, null])
   setStore((s) => ({ screen: 'play', game, rev: s.rev + 1, armed: null, selected: null, busy: false, dice: null }))
   // the opening banner and anything else the setup logged
   const opening = plan(game, game, game.log)

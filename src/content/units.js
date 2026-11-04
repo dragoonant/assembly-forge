@@ -73,7 +73,7 @@ export const UNITS = Object.freeze({
   // it has to close, which is what makes it a skirmisher rather than a sniper.
   u02: Object.freeze({
     defId: 'u02',
-    hp: 12, vp: 6, tl: 1,
+    hp: 13, vp: 6, tl: 1,
     traits: ['assault', 'high-maneuver'],
     weapons: Object.freeze([
       Object.freeze({ wid: 'u02a', tlCost: 2, range: 2, strength: 3, crit: { status: 'fracture' } }),
@@ -97,7 +97,7 @@ export const UNITS = Object.freeze({
   // Highest bounty in the roster: losing it swings the score twice.
   u03: Object.freeze({
     defId: 'u03',
-    hp: 11, vp: 7, tl: 3,
+    hp: 12, vp: 6, tl: 3,
     traits: ['artillery'],
     weapons: Object.freeze([
       Object.freeze({ wid: 'u03a', tlCost: 2, range: 1, strength: 2, crit: { status: 'disarm' } }),
@@ -121,7 +121,7 @@ export const UNITS = Object.freeze({
   // the next attacker's job easier.
   u04: Object.freeze({
     defId: 'u04',
-    hp: 14, vp: 7, tl: 3,
+    hp: 13, vp: 7, tl: 3,
     traits: ['assault'],
     weapons: Object.freeze([
       Object.freeze({ wid: 'u04a', tlCost: 2, range: 1, strength: 3, crit: { status: 'disarm' } }),
@@ -145,7 +145,7 @@ export const UNITS = Object.freeze({
   // Timeline a swing -- it is slow in the only sense this game measures.
   u05: Object.freeze({
     defId: 'u05',
-    hp: 17, vp: 8, tl: 2,
+    hp: 16, vp: 9, tl: 2,
     traits: ['durable', 'assault'],
     weapons: Object.freeze([
       Object.freeze({ wid: 'u05a', tlCost: 2, range: 3, strength: 2, crit: { status: 'slow' } }),

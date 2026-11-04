@@ -724,3 +724,17 @@ export function beginNextActivation(state) {
   state.log.push({ t: 'activate', uid: next.uid, side: next.side, round: state.round });
   return true;
 }
+
+/**
+ * A unit that ends any movement on a pickup collects it (rulebook 2026-10-30, "Upgrades").
+ * @param {Object} state
+ * @param {Object} u
+ */
+export function collectPickup(state, u) {
+  const p = pickupAt(state, u.hex);
+  if (!p) return;
+  state.pickups = state.pickups.filter(function (x) { return x.pid !== p.pid; });
+  if (p.kind === 'energy') u.energy += 1;
+  else u.upgrades.push(p.upgrade);
+  state.log.push({ t: 'pickup', uid: u.uid, pid: p.pid, kind: p.kind, upgrade: p.upgrade, sound: 'pickup', notice: true });
+}

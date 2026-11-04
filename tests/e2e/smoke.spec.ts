@@ -24,6 +24,14 @@ test('setup, deploy and move with real clicks on the board', async ({ page }) =>
   await page.getByTestId('team-t_lance').click()
   await page.getByTestId('confirm').click()
   await expect(page.getByTestId('brief')).toBeVisible()
+  // the deck picker starts on the suggested nine; dropping one blocks Deploy until a ninth is picked again
+  await expect(page.getByTestId('deck-count')).toHaveText('9 / 9')
+  await page.locator('.deck-card.on').first().click()
+  await expect(page.getByTestId('deck-count')).toHaveText('8 / 9')
+  await expect(page.getByTestId('deploy')).toBeDisabled()
+  await page.locator('.deck-card:not(.on)').last().click()
+  await expect(page.getByTestId('deploy')).toBeEnabled()
+  await page.screenshot({ path: 'e2e-out/brief-deck.png', fullPage: true })
   await page.getByTestId('deploy').click()
   await page.waitForFunction(() => window.__game?.state() !== null && window.__game!.camera() !== null)
   const cells = await page.evaluate(() => Object.keys(window.__game!.state()!.board.hexes).length)
@@ -35,7 +43,11 @@ test('setup, deploy and move with real clicks on the board', async ({ page }) =>
   await page.screenshot({ path: 'e2e-out/m2-deploy.png' })
   const dep = await page.evaluate(() => window.__game!.legal().find((a) => a.type === 'deploy')!.to!)
   await clickHex(page, dep.q, dep.r)
-  await page.waitForFunction(() => window.__game!.legal().every((a) => a.type === 'advance' || a.type === 'dash'))
+  // on the Base: moves off it, plus Commands and non-attack cards, but no Primary that would leave it there
+  await page.waitForFunction(() => {
+    const l = window.__game!.legal()
+    return l.some((a) => a.type === 'advance') && l.every((a) => ['advance', 'dash', 'move', 'command', 'tactics'].includes(a.type))
+  })
   const uid = await page.evaluate(() => window.__game!.state()!.activation!.uid)
   const onBoard = await page.evaluate((u) => window.__game!.state()!.units[u]!.hex, uid)
   expect(onBoard).toEqual(dep)

@@ -45,6 +45,11 @@ export function registerPack(pack) {
     if (!t) throw new Error('Pack ' + pack.id + ' lists team ' + tid + ' but does not define it');
     for (const d of t.units) {
       if (!pack.units[d]) throw new Error('Pack ' + pack.id + ' team ' + tid + ' uses unknown unit ' + d);
+      // a unit card appears once per squad unless it is Mass Produced (rulebook 2026-10-30, "Building a Squad")
+      const mass = (pack.units[d].traits || []).indexOf('mass-produced') !== -1;
+      if (!mass && t.units.filter(function (x) { return x === d; }).length > 1) {
+        throw new Error('Pack ' + pack.id + ' team ' + tid + ' repeats ' + d + ', which is not mass-produced');
+      }
     }
   }
   for (const d of Object.keys(pack.units)) {

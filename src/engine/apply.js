@@ -49,6 +49,12 @@ export function apply(state, action) {
     return next;
   }
 
+  // A unit's own triggered response: use it (on the chosen target) or decline it.
+  if (canonical.type === 'trigger' || canonical.type === 'trigger_skip') {
+    Effects.decideTrigger(next, canonical, Combat);
+    return next;
+  }
+
   // Decisions on a paused attack: a response card, a pass, or a reacting unit's move or attack.
   if (canonical.type === 'respond' || canonical.type === 'pass' || canonical.type === 'react_move' || canonical.type === 'react_attack') {
     Attack.decide(next, canonical);
@@ -71,20 +77,21 @@ export function apply(state, action) {
       break;
 
     case 'dash':
-      moveUnit(next, canonical, 'dash');
+      // costs are paid on declaring, before the action resolves (rulebook 2026-10-30, "Activating your Units")
       if (canonical.grant !== undefined) {
-        useGrant(act, canonical.grant);
+        useGrant(act, canonical.grant, canonical.skipped);
       } else {
         act.slots.primary = 'dash';
         spendTimeline(next, act.uid, next.rules.actions.dash.tlCost);
       }
-      Effects.raise(next, act.uid, 'dash', Combat);
+      moveUnit(next, canonical, 'dash');
+      Effects.raise(next, act.uid, 'dash', Combat, true);
       break;
 
     case 'move':
       // a granted Move: ordinary movement, no Timeline, separate from the Advance
       moveUnit(next, canonical, 'move');
-      useGrant(act, canonical.grant);
+      useGrant(act, canonical.grant, canonical.skipped);
       break;
 
     case 'energize': {
@@ -102,7 +109,7 @@ export function apply(state, action) {
       const w = Combat.weapon(State.unit(next, act.uid), canonical.wid);
       const free = Boolean(canonical.free);
       if (canonical.grant !== undefined) {
-        useGrant(act, canonical.grant);
+        useGrant(act, canonical.grant, canonical.skipped);
       } else if (free) {
         // granted by an ability, at no Timeline cost: it does not use up the Primary Action
         act.extraAttacks -= 1;
@@ -166,6 +173,7 @@ export function apply(state, action) {
     }
 
     case 'rescue': {
+      spendTimeline(next, act.uid, next.rules.actions.rescue.tlCost);
       const g = next.garrisons[canonical.gid];
       g.alive = false;
       next.players[act.side].vp += next.rules.scoring.garrisonRescueVp;
@@ -176,8 +184,7 @@ export function apply(state, action) {
         t: 'garrison_rescued', gid: g.gid, uid: act.uid, side: act.side,
         vp: next.rules.scoring.garrisonRescueVp, sound: 'rescue', notice: true
       });
-      Effects.raise(next, act.uid, 'rescue', Combat);
-      spendTimeline(next, act.uid, next.rules.actions.rescue.tlCost);
+      Effects.raise(next, act.uid, 'rescue', Combat, true);
       break;
     }
 
@@ -190,7 +197,7 @@ export function apply(state, action) {
       act.startHex = { q: u.hex.q, r: u.hex.r };
       act.deployed = true;
       next.log.push({ t: 'deploy', uid: u.uid, side: u.side, to: { q: u.hex.q, r: u.hex.r }, sound: 'deploy' });
-      collectPickup(next, u);
+      State.collectPickup(next, u);
       break;
     }
 
@@ -246,7 +253,7 @@ function moveUnit(state, action, kind) {
     t: kind, uid: u.uid, from: from, to: { q: u.hex.q, r: u.hex.r }, cost: action.cost,
     path: (action.path || []).map(function (h) { return { q: h.q, r: h.r }; })
   });
-  collectPickup(state, u);
+  State.collectPickup(state, u);
 }
 
 /**
@@ -254,22 +261,16 @@ function moveUnit(state, action, kind) {
  * @param {Object} state
  * @param {Object} u
  */
-export function collectPickup(state, u) {
-  const p = State.pickupAt(state, u.hex);
-  if (!p) return;
-  state.pickups = state.pickups.filter(function (x) { return x.pid !== p.pid; });
-  if (p.kind === 'energy') u.energy += 1;
-  else u.upgrades.push(p.upgrade);
-  state.log.push({ t: 'pickup', uid: u.uid, pid: p.pid, kind: p.kind, upgrade: p.upgrade, sound: 'pickup', notice: true });
-}
+export const collectPickup = State.collectPickup;
 
 /**
  * Spend a granted action. A grant with `then` opens its follow-up as it is used.
  * @param {Object} act
  * @param {number} i
  */
-function useGrant(act, i) {
-  const g = act.grants.splice(i, 1)[0];
+function useGrant(act, i, skipped) {
+  let g = act.grants.splice(i, 1)[0];
+  for (let k = 0; g && k < (skipped || 0); k++) g = g.then;
   if (g && g.then) act.grants.push(g.then);
 }
 

@@ -544,8 +544,7 @@ it:
 - **Responses.** Any number per activation, once per separate trigger. Each
   unit hit by an area attack is a separate trigger. The acting player decides
   first, and the attacker's Responses resolve first in each attack window.
-  The four windows are before the roll, after the roll, after crits and after
-  damage.
+  The three windows are before the roll, after the roll and after damage.
 - **Area attacks.** The attacker places the pattern, and every enemy in it
   and in LoS is hit. One roll covers all targets. Hits are counted per target
   using that target's terrain modifiers. Units and Garrisons are ignored for

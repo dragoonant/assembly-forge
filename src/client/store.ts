@@ -19,6 +19,8 @@ export interface GameStore {
   screen: Screen
   myTeam: string | null
   foeTeam: string | null
+  /** The player's chosen Tactics deck; null means the suggested one. */
+  myDeck: string[] | null
   game: GameState | null
   /** The weapon the player has picked and is choosing a target for. */
   armed: string | null
@@ -54,6 +56,7 @@ export const useGame = create<GameStore>(() => ({
   screen: 'select',
   myTeam: null,
   foeTeam: null,
+  myDeck: null,
   game: null,
   armed: null,
   selected: null,

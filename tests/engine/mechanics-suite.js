@@ -9,10 +9,14 @@ import * as F from './fixtures.js';
 
 import * as Actions from '../../src/engine/actions.js';
 import * as Apply from '../../src/engine/apply.js';
+import * as Attack from '../../src/engine/attack.js';
 import * as Combat from '../../src/engine/combat.js';
 import * as AI from '../../src/ai/ai.js';
 import * as Hex from '../../src/engine/hex.js';
 import * as State from '../../src/engine/state.js';
+import * as Sk from '../../src/content/scenarios/skirmish.js';
+import * as Tac from '../../src/content/tactics.js';
+import * as Units from '../../src/content/units.js';
 
 const H = Hex.hex;
 
@@ -333,5 +337,229 @@ T.suite('push and pull choices', function () {
       const out = AI.playOut(s);
       T.ok(out.state.over, 'finished');
     }
+  });
+});
+
+T.suite('triggered unit responses', function () {
+  /** a1 has a response to its own Dash: 1 damage to an adjacent enemy. */
+  function kicker(optional, enemies) {
+    const units = [F.unit('a1', 'u02', 0, H(0, 0), { tl: 1 })].concat(enemies.map(function (e, i) {
+      return F.unit('b' + (i + 1), 'u06', 1, e, { tl: 5 + i, hp: 40 });
+    }));
+    const s = setup(units);
+    s.units.a1.abilities = [{ aid: 'kick', timing: 'response', on: 'dash', target: 'adjacentEnemy', optional: optional, effects: [{ k: 'damage', n: 1 }] }];
+    return s;
+  }
+  function dashNextTo(s, at) {
+    return legal(s, 'dash').find(function (d) { return Hex.equals(d.to, at); });
+  }
+
+  T.test('an optional response is offered after the event, and declining it does nothing', function () {
+    let s = kicker(true, [H(3, 0)]);
+    s = Apply.apply(s, dashNextTo(s, H(2, 0)));
+    T.ok(s.pending && s.pending.kind === 'trigger' && s.pending.side === 0, 'the owner decides');
+    T.deepEq(Actions.legalActions(s).map(function (a) { return a.type; }).sort(), ['trigger', 'trigger_skip']);
+    const used = Apply.apply(s, legal(s, 'trigger')[0]);
+    const declined = Apply.apply(s, legal(s, 'trigger_skip')[0]);
+    T.eq(used.units.b1.hp, 39, 'used: 1 damage');
+    T.eq(declined.units.b1.hp, 40, 'declined: none');
+    T.notOk(declined.pending, 'the activation carries on');
+    T.ok(legal(declined, 'end_activation').length, 'and can end');
+  });
+
+  T.test('with two possible targets the owner picks one, even when the response is mandatory', function () {
+    let s = kicker(false, [H(3, 0), H(2, 1)]);
+    s = Apply.apply(s, dashNextTo(s, H(2, 0)));
+    T.ok(s.pending && s.pending.kind === 'trigger', 'a choice of target');
+    T.eq(legal(s, 'trigger_skip').length, 0, 'mandatory: no decline');
+    const onB2 = legal(s, 'trigger').find(function (a) { return a.targetUid === 'b2'; });
+    s = Apply.apply(s, onB2);
+    T.eq(s.units.b2.hp, 39);
+    T.eq(s.units.b1.hp, 40);
+  });
+
+  T.test('a mandatory response with one target still fires on its own', function () {
+    let s = kicker(false, [H(3, 0)]);
+    s = Apply.apply(s, dashNextTo(s, H(2, 0)));
+    T.notOk(s.pending, 'no prompt');
+    T.eq(s.units.b1.hp, 39);
+  });
+
+  T.test('with nobody adjacent the response is not offered', function () {
+    let s = kicker(true, [H(5, 0)]);
+    s = Apply.apply(s, dashNextTo(s, H(1, 0)));
+    T.notOk(s.pending);
+  });
+});
+
+T.suite('chosen decks', function () {
+  T.test('a legal chosen deck is used, an illegal one falls back to the suggestion', function () {
+    const squads = Sk.squadsFor();
+    const defs = squads[0].map(function (d) { return Units.def(d); });
+    const pool = Tac.deckPool(defs);
+    T.ok(pool.length >= 9, 'enough cards to choose from');
+    const mine = pool.slice(pool.length - 9);
+    const g = State.createGame(Sk.skirmish({ seed: 'deck', decks: [mine, ['nope']] }));
+    const all0 = g.players[0].tactics.hand.concat(g.players[0].tactics.deck).map(function (c) { return c.cid; }).sort();
+    T.deepEq(all0, mine.slice().sort(), 'side 0 plays its own nine');
+    const all1 = g.players[1].tactics.hand.concat(g.players[1].tactics.deck).map(function (c) { return c.cid; }).sort();
+    T.deepEq(all1, Tac.buildDeck(squads[1].map(function (d) { return Units.def(d); })).slice().sort(), 'side 1 gets the suggestion');
+    T.notOk(Tac.isLegalDeck(mine.slice(0, 8).concat([mine[0]]), defs), 'duplicates are illegal');
+    T.notOk(Tac.isLegalDeck(mine.slice(0, 8), defs), 'eight is too few');
+  });
+});
+
+T.suite('card audit fixes', function () {
+  // a 60-degree wedge out to distance 2, as the area cards draw it: d + 1 hexes at each distance d
+  const wedge2 = { wid: 'wedge', tlCost: 3, range: 0, strength: 12, ignoreLos: false, area: [[1, 0], [1, -1], [2, 0], [2, -1], [2, -2]] };
+
+  T.test('a wedge pattern covers d + 1 hexes at each distance and rotates to all six aims', function () {
+    const s = setup([F.unit('a1', 'u02', 0, H(0, 0), { tl: 1, weapons: [wedge2] }), F.unit('b1', 'u06', 1, H(5, -5), { tl: 5 })]);
+    for (let dir = 0; dir < 6; dir++) {
+      const hexes = Attack.areaHexes(s, s.units.a1, wedge2, dir);
+      const byDist = [0, 0, 0];
+      for (const h of hexes) byDist[Hex.distance(H(0, 0), h)]++;
+      T.deepEq(byDist, [0, 2, 3], 'aim ' + dir);
+    }
+  });
+
+  T.test('a card for "a defender" covers only the defender its player picks', function () {
+    const block = { cid: 'qb', timing: 'response', window: 'afterRoll', role: 'defender', pick: 'one', effects: [{ k: 'reduceDamage', n: 3 }] };
+    let s = setup([
+      F.unit('a1', 'u02', 0, H(0, 0), { tl: 1, weapons: [wedge2] }),
+      F.unit('b1', 'u06', 1, H(1, 0), { tl: 5, hp: 40 }),
+      F.unit('b2', 'u04', 1, H(2, -1), { tl: 6, hp: 40 })
+    ], [[], [block]]);
+    s = Apply.apply(s, legal(s, 'attack').find(function (a) { return a.area === 0; }));
+    T.ok(s.pending && s.pending.window === 'afterRoll' && s.pending.side === 1);
+    const plays = legal(s, 'respond');
+    T.deepEq(plays.map(function (a) { return a.targetUid; }).sort(), ['b1', 'b2'], 'one option per defender');
+    const passed = lastAttack(Apply.apply(s, { type: 'pass', side: 1 }));
+    const onB2 = lastAttack(Apply.apply(s, plays.find(function (a) { return a.targetUid === 'b2'; })));
+    const dmg = function (e, id) { return e.results.find(function (r) { return r.ref.id === id; }).damage; };
+    T.eq(dmg(onB2, 'b1'), dmg(passed, 'b1'), 'b1 unprotected');
+    T.eq(dmg(onB2, 'b2'), Math.max(0, dmg(passed, 'b2') - 3), 'b2 protected');
+  });
+
+  T.test('a chained grant whose first part has nowhere to go offers its next part', function () {
+    let s = setup([F.unit('a1', 'u02', 0, H(0, 0), { tl: 1 }), F.unit('b1', 'u06', 1, H(1, 0), { tl: 5, hp: 40 })],
+      null, { arena: { hexes: { '0,-1': { terrain: 'blocked' }, '1,-1': { terrain: 'blocked' }, '-1,0': { terrain: 'blocked' }, '-1,1': { terrain: 'blocked' }, '0,1': { terrain: 'blocked' } } } });
+    s.units.a1.abilities = [{ aid: 'ce', timing: 'command', target: 'self', effects: [{ k: 'grant', grant: { kind: 'dash', then: { kind: 'attack', wid: 'light' } } }] }];
+    s = Apply.apply(s, { type: 'command', uid: 'a1', aid: 'ce' });
+    T.notOk(legal(s, 'dash').some(function (d) { return d.free; }), 'boxed in: no free Dash');
+    const atk = legal(s, 'attack').find(function (a) { return a.grant !== undefined; });
+    T.ok(atk && atk.skipped === 1, 'the granted attack is offered directly');
+    s = Apply.apply(s, atk);
+    T.eq(s.activation.grants.length, 0, 'the whole chain is spent');
+  });
+
+  T.test('ability damage that would defeat a unit opens the save, and the ability then finishes', function () {
+    const save = { cid: 'sv2', timing: 'response', window: 'wouldBeDefeated', role: 'defender', requires: { defId: 'u02' },
+      effects: [{ k: 'surviveDefeat', move: 2, attackWid: 'light' }] };
+    let s = setup([F.unit('a1', 'u02', 0, H(0, 0), { tl: 1, hp: 3 }), F.unit('b1', 'u06', 1, H(2, 0), { tl: 5, hp: 40 })], [[save]]);
+    s.units.a1.abilities = [{ aid: 'ex', timing: 'command', target: 'self', effects: [{ k: 'damageSelf', n: 3 }, { k: 'grant', grant: { kind: 'move', n: 2 } }] }];
+    s = Apply.apply(s, { type: 'command', uid: 'a1', aid: 'ex' });
+    T.ok(s.pending && s.pending.window === 'wouldBeDefeated' && s.pending.side === 0, 'its player is asked');
+    T.eq(s.units.a1.hp, 1, 'held at 1 HP while deciding');
+
+    const passed = Apply.apply(s, { type: 'pass', side: 0 });
+    T.notOk(passed.units.a1.alive, 'passing: defeated');
+    T.eq(passed.players[1].vp, s.units.a1.vp, 'the enemy scores it');
+
+    s = Apply.apply(s, { type: 'respond', side: 0, cid: 'sv2' });
+    T.eq(s.pending && s.pending.kind, 'react_move', 'saved: it moves');
+    s = Apply.apply(s, { type: 'pass', side: 0 });
+    T.eq(s.pending && s.pending.kind, 'react_attack', 'then strikes');
+    s = Apply.apply(s, { type: 'pass', side: 0 });
+    T.notOk(s.pending);
+    T.ok(s.units.a1.alive && s.units.a1.hp === 1);
+    T.ok(s.activation.grants.some(function (g) { return g.kind === 'move'; }), 'the rest of the ability resolved');
+  });
+});
+
+T.suite('rulebook audit fixes', function () {
+  T.test('a crit Fracture lands before damage and counts on the same attack', function () {
+    const w = { wid: 'fx', tlCost: 2, range: 6, strength: 12, ignoreLos: true, crit: { status: 'fracture' } };
+    for (let seed = 0; seed < 20; seed++) {
+      let s = setup([F.unit('a1', 'u02', 0, H(0, 0), { tl: 1, weapons: [w] }), F.unit('b1', 'u06', 1, H(2, 0), { tl: 5, hp: 400 })], null, { seed: 'fx' + seed });
+      s = Apply.apply(s, legal(s, 'attack')[0]);
+      const e = lastAttack(s);
+      const r = e.results[0];
+      if (!r.status) continue;
+      T.ok(r.hits >= 3, 'twelve dice with a crit: plenty of hits');
+      T.eq(r.damage, r.hits + 3, 'Fracture added on the attack that applied it');
+      T.eq(s.units.b1.statuses.indexOf('fracture'), -1, 'and spent');
+      return;
+    }
+    T.ok(false, 'no crit in twenty seeds');
+  });
+
+  T.test('Fracture is applied before Shields', function () {
+    const s = setup([F.unit('a1', 'u02', 0, H(0, 0), { tl: 1 }), F.unit('b1', 'u06', 1, H(3, 0), { tl: 5, hp: 40 })]);
+    s.units.b1.statuses.push('fracture');
+    s.units.b1.upgrades.push('shield');
+    const r = Combat.dealDamage(s, { kind: 'unit', id: 'b1' }, 3, 0, true);
+    T.eq(r.damage, 5, '3 + 3 Fracture - 1 Shield');
+  });
+
+  T.test("a unit defeated by its own side's collision scores for the opponent; an own Garrison scores nobody", function () {
+    const s = setup([
+      F.unit('a1', 'u02', 0, H(0, 0), { tl: 1 }),
+      F.unit('a2', 'u04', 0, H(2, 0), { tl: 6, hp: 2 }),
+      F.unit('b1', 'u06', 1, H(1, 0), { tl: 5, hp: 40 })
+    ], null, { garrisons: [{ gid: 'g0', side: 0, hex: H(1, 1) }] });
+    s.units.a1.abilities = [{ aid: 'p', timing: 'command', target: 'adjacentEnemy', effects: [{ k: 'push', n: 1 }] }];
+    let t = Apply.apply(s, { type: 'command', uid: 'a1', aid: 'p', targetUid: 'b1' });
+    const intoAlly = legal(t, 'displace').find(function (d) { return Hex.equals(d.to, H(2, 0)); });
+    const ally = Apply.apply(t, intoAlly);
+    T.notOk(ally.units.a2.alive, 'the ally fell');
+    T.eq(ally.players[0].vp, s.players[0].vp, 'the pusher scores nothing');
+    T.eq(ally.players[1].vp, s.players[1].vp + s.units.a2.vp, 'its opponent scores it');
+    const intoGarrison = legal(t, 'displace').find(function (d) { return Hex.equals(d.to, H(1, 1)); });
+    const gar = Apply.apply(t, intoGarrison);
+    T.notOk(gar.garrisons.g0.alive);
+    T.eq(gar.players[0].vp + gar.players[1].vp, s.players[0].vp + s.players[1].vp, 'nobody scores an own Garrison');
+  });
+
+  T.test('a push into a Base is a collision', function () {
+    const s = setup([F.unit('a1', 'u02', 0, H(0, 0), { tl: 1 }), F.unit('b1', 'u06', 1, H(1, 0), { tl: 5, hp: 40 })],
+      null, { bases: [{ bid: 'x', side: 1, hex: H(2, 0) }] });
+    s.units.a1.abilities = [{ aid: 'p', timing: 'command', target: 'adjacentEnemy', effects: [{ k: 'push', n: 2 }] }];
+    const t = Apply.apply(s, { type: 'command', uid: 'a1', aid: 'p', targetUid: 'b1' });
+    const into = legal(t, 'displace').find(function (d) { return Hex.equals(d.to, H(2, 0)); });
+    T.ok(into && into.collide, 'offered as a collision');
+    const after = Apply.apply(t, into);
+    T.eq(after.units.b1.hp, 38);
+    T.ok(Hex.equals(after.units.b1.hex, H(1, 0)));
+  });
+
+  T.test('a ranged ability with a stated range needs line of sight', function () {
+    const s = setup([F.unit('a1', 'u02', 0, H(0, 0), { tl: 1, energy: 2 }), F.unit('b1', 'u06', 1, H(2, 0), { tl: 5 })],
+      null, { arena: { hexes: { '1,0': { elevation: 2 } } } });
+    s.units.a1.energy = 2;
+    s.units.a1.abilities = [
+      { aid: 'r', timing: 'command', energy: 1, target: 'enemyInRange', range: 2, los: true, effects: [{ k: 'status', s: 'slow' }] },
+      { aid: 'h', timing: 'command', energy: 1, target: 'enemyInRange', range: 2, effects: [{ k: 'status', s: 'slow' }] }
+    ];
+    const cmds = legal(s, 'command').map(function (a) { return a.aid; });
+    T.ok(cmds.indexOf('h') !== -1, '"within 2 hexes" ignores the hill');
+    T.eq(cmds.indexOf('r'), -1, '"Range 2" is blocked by it');
+  });
+
+  T.test('a reaction move collects a pickup it ends on', function () {
+    const save = { cid: 'sv3', timing: 'response', window: 'wouldBeDefeated', role: 'defender', effects: [{ k: 'surviveDefeat', move: 2 }] };
+    let s = setup([F.unit('a1', 'u02', 0, H(0, 0), { tl: 1, weapons: [SURE] }), F.unit('b1', 'u06', 1, H(2, 0), { tl: 5, hp: 3 })],
+      [[], [save]], { pickups: [{ pid: 'e1', kind: 'energy', hex: H(3, 0) }] });
+    s = Apply.apply(s, legal(s, 'attack')[0]);
+    s = Apply.apply(s, { type: 'respond', side: 1, cid: 'sv3' });
+    const e0 = s.units.b1.energy;
+    s = Apply.apply(s, legal(s, 'react_move').find(function (m) { return Hex.equals(m.to, H(3, 0)); }));
+    T.eq(s.units.b1.energy, e0 + 1);
+    T.eq(s.pickups.length, 0);
+  });
+
+  T.test('decks grow by three for each Phase beyond two', function () {
+    const g = State.createGame(Sk.skirmish({ seed: 'long', rules: { match: { phasesPerGame: 3 } } }));
+    T.eq(g.players[0].tactics.hand.length + g.players[0].tactics.deck.length, 12);
   });
 });

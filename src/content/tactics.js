@@ -1,10 +1,9 @@
 /**
  * Tactics cards.
  *
- * Each player builds a deck of exactly nine, shuffles it blind, and draws
- * three. A card may be played during one of your units' activations, one card
- * per unit turn, and playing one defensively locks you out of playing another
- * on your next activation.
+ * Each player builds a deck of nine (three more for each Phase beyond two), one
+ * copy of each card, shuffles it blind, and draws three. Each player may play
+ * up to one card per activation.
  *
  * Cards carry the SAME effect data as abilities and are resolved by the same
  * code in `src/engine/effects.js`. A card is an ability that lives in a hand
@@ -119,6 +118,36 @@ export function allowedFor(c, defs) {
     if (c.requires.trait && (defs[i].traits || []).indexOf(c.requires.trait) !== -1) return true;
   }
   return false;
+}
+
+/**
+ * Every card a squad may put in its deck, in the pool's order: signature cards it qualifies for, then open cards.
+ * @param {Array<Object>} defs
+ * @returns {string[]}
+ */
+export function deckPool(defs) {
+  const pack = activePack();
+  const pool = pack && pack.tactics ? (pack.tacticsOrder || Object.keys(pack.tactics)) : POOL.slice();
+  return pool.filter(function (cid) { return allowedFor(card(cid), defs); });
+}
+
+/**
+ * Is this a legal deck for the squad: exactly `size` cards, one copy of each, every one allowed?
+ * @param {string[]} cids
+ * @param {Array<Object>} defs
+ * @param {number} [size]
+ * @returns {boolean}
+ */
+export function isLegalDeck(cids, defs, size) {
+  const want = size === undefined ? 9 : size;
+  if (!Array.isArray(cids) || cids.length !== want) return false;
+  const pool = deckPool(defs);
+  const seen = {};
+  for (const cid of cids) {
+    if (seen[cid] || pool.indexOf(cid) === -1) return false;
+    seen[cid] = true;
+  }
+  return true;
 }
 
 /**

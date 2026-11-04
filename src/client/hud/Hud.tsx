@@ -159,8 +159,8 @@ function DecisionPanel({ game }: { game: GameState }) {
         {cards.map((a) => {
           const c = hand.find((x) => x.cid === a.cid)!
           return (
-            <button key={a.cid} className="act ability" data-testid={'respond-' + a.cid} onClick={() => take(a)}>
-              <strong>{Text.tacticsName(a.cid)}</strong>
+            <button key={a.cid + (a.targetUid ?? '')} className="act ability" data-testid={'respond-' + a.cid + (a.targetUid ? '-' + a.targetUid : '')} onClick={() => take(a)}>
+              <strong>{Text.tacticsName(a.cid)}{a.targetUid ? ' · ' + displayName(game.units[a.targetUid]!.defId) : ''}</strong>
               <span className="dim">{Text.abilityText(c)}</span>
             </button>
           )
@@ -174,6 +174,27 @@ function DecisionPanel({ game }: { game: GameState }) {
     )
   }
   const who = p.uid ? displayName(game.units[p.uid]!.defId) : ''
+  if (p.kind === 'trigger') {
+    const uses = af.legal.filter((a) => a.type === 'trigger')
+    const skip = af.legal.find((a) => a.type === 'trigger_skip')
+    const ab = game.units[p.uid!]!.abilities.find((x) => x.aid === p.aid)
+    return (
+      <section className="panel actions decision" data-testid="decision">
+        <div className="panel-head">{who}: {Text.abilityName(p.aid)}</div>
+        {ab && <p className="hint">{Text.abilityText(ab)}</p>}
+        {uses.map((a) => (
+          <button key={a.targetUid ?? 'self'} className="act ability" data-testid={'act-trigger-' + (a.targetUid ?? 'self')} onClick={() => take(a)}>
+            <strong>{a.targetUid ? 'Use on ' + displayName(game.units[a.targetUid]!.defId) : 'Use it'}</strong>
+          </button>
+        ))}
+        {skip && (
+          <button className="act end" data-testid="act-trigger_skip" onClick={() => take(skip)}>
+            <strong>Decline</strong>
+          </button>
+        )}
+      </section>
+    )
+  }
   if (p.kind === 'displace') {
     const stop = af.legal.find((a) => a.type === 'displace_stop')
     return (

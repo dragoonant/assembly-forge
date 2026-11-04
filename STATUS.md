@@ -7,10 +7,15 @@
 - The engine, content and AI from MegaMechaTactics, now reconciled with the publisher's core rulebook (2026-10-30):
   deployment from Reserve and Bases, Engagement, objective contesting, line of sight, terrain (water, debris, interference
   field, impassable), Jump, Hover, Push and Pull with collisions, map pickups, stacking Upgrades, the status timings and the
-  tie-break. `docs/rules-reconciliation.md` lists every change, its config path, its tests, and the five simplifications.
+  tie-break. `docs/rules-reconciliation.md` lists every change, its config path, its tests, and the simplifications.
+  A full audit (2026-11-03) of every rulebook section and every local-pack card is recorded there too.
+- Card mechanics: a resumable attack with response windows, area attacks, grants, attack cards, Push and Pull as the
+  acting player's choice, unit responses that ask for their target (or can be declined), and the would-be-defeated window
+  for attack and ability damage.
+- Deck building: players pick nine Tactics cards on the briefing screen, starting from a suggested deck.
 - The skirmish scenario on the 203-hex starter grid, with our own point-symmetric layout: one Base a side, two Garrisons a
   side, three Objectives (6, 4, 4 VP), six map pickups.
-- The roster re-tuned by self-play; every team now wins 47 to 53% of its mixed games.
+- The roster re-tuned by self-play; every team wins 42 to 58% of its mixed games.
 - The playable 3D board: squad select and briefing, then the 203-hex board from the player's seat at the left edge. Every
   affordance comes from the engine's legal actions: green rings for a free Advance, amber for a Dash, cyan for deploying,
   red rings on targets, a line-of-sight line (dashed red to the blocking hex) while a weapon is armed, and terrain, cost
@@ -32,12 +37,13 @@
 
 ## Verified (2026-11-03)
 - `npm run typecheck`: clean.
-- `npm test`: 199 engine tests and 22 unit tests pass (the controller's shot-then-dice-then-commit path, the planner).
+- `npm test`: 249 engine tests and 22 unit tests pass (the controller's shot-then-dice-then-commit path, the planner).
 - `npm run build`: clean.
 - `npm run e2e` (4 tests): squad select to deploy to a move with real clicks on the 3D board; a whole AI-vs-AI game through
   the client; and beats and effects playing at normal and fast speed. All with zero console errors. Screenshots of deploy,
-  moves, close zoom, mid-game, game over, a phone layout, the Phase banner, a shot and floating labels were looked at.
-- `node tools/ai-selfplay.js 96 pairs=all`: 96 games, no crashes, no forced passes; teams 47/50/53/50%.
+  moves, close zoom, mid-game, game over, a phone layout, the Phase banner, a shot, floating labels and the deck picker
+  were looked at.
+- `node tools/ai-selfplay.js 96 pairs=all`: 96 games, no crashes, no forced passes; teams 58/56/44/42%.
 - Mirror matches: 23 to 25 over 48 games, so no seat advantage.
 
 ## Not verified / known gaps

@@ -676,12 +676,12 @@ T.suite('activation', function () {
     T.deepEq(T.where(dashFirst, 'a1'), { q: 2, r: 0 }, 'five hexes in total');
   });
 
-  T.test('a non-movement action closes the movement block', function () {
-    // Movement is one block: once the unit has stopped and done something
-    // else, it cannot pick the move back up.
+  T.test('a unit may still Advance after its Primary Action', function () {
+    // The rulebook forbids only acting in the middle of a move, not moving after acting.
     const s = T.act(F.duel(), { type: 'energize' });
-    T.ok(s.activation.movementClosed);
-    T.eq(T.findAll(s, { type: 'advance' }).length, 0, 'no Advance after the block closed');
+    T.ok(T.findAll(s, { type: 'advance' }).length > 0, 'Energize, then Advance');
+    const old = T.act(F.duel({ rules: { movement: { oneBlock: true } } }), { type: 'energize' });
+    T.eq(T.findAll(old, { type: 'advance' }).length, 0, 'the old one-block house rule still works when switched on');
   });
 
   T.test('a unit with no Primary available may pass, and its token still moves', function () {

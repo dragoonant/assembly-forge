@@ -29,6 +29,7 @@
 
 import * as Displace from './displace.js';
 import * as Hex from './hex.js';
+import * as Los from './los.js';
 import * as State from './state.js';
 
 /**
@@ -37,6 +38,7 @@ import * as State from './state.js';
  * @property {'command'|'ongoing'|'response'} timing
  * @property {number} [energy]   Energy spent to use it, command only
  * @property {string} [on]       event id, response only
+ * @property {boolean} [optional] a response the owning player may decline ("may" on the card)
  * @property {Object} [when]     condition, see `conditionHolds`
  * @property {string} [target]   'self' | 'enemyInRange' | 'adjacentEnemy'
  * @property {number} [range]
@@ -196,6 +198,8 @@ export function targetsFor(state, u, a) {
     const t = units[i];
     if (t.side === u.side) continue;
     if (Hex.distance(u.hex, t.hex) > range) continue;
+    // `los`: a stated [Range N] needs Line of Sight; "within N hexes" does not (rulebook 2026-10-30, p19)
+    if (a.los && !Los.hasLos(state, u.hex, t.hex, { side: u.side, targetUid: t.uid })) continue;
     out.push(t.uid);
   }
   out.sort();
@@ -278,13 +282,10 @@ export function resolveEffects(state, uid, effects, targetUid, combat) {
         break;
 
       case 'move':
-        // Grants movement and REOPENS the movement block, because an ability
-        // that says "move 2" has to work after the unit has already stopped --
-        // otherwise it only functions on a turn the unit had not yet moved,
-        // which is not what it says.
+        // An additional Move action of N hexes, on top of the Advance (rulebook 2026-10-30, "Advance": movement from
+        // cards and abilities is in addition to the normal Advance).
         if (state.activation && state.activation.uid === uid) {
-          state.activation.mods.move += e.n;
-          state.activation.movementClosed = false;
+          state.activation.grants.push({ kind: 'move', n: e.n });
           applied.push('move');
         }
         break;
@@ -308,8 +309,9 @@ export function resolveEffects(state, uid, effects, targetUid, combat) {
 
       case 'damage':
         if (targetUid) {
-          combat.dealDamage(state, { kind: 'unit', id: targetUid }, e.n, u.side);
+          combat.dealDamage(state, { kind: 'unit', id: targetUid }, e.n, u.side, false, { mayBeSaved: true });
           applied.push('damage');
+          if (heldForSave(state, uid, effects, i, targetUid)) return applied;
         }
         break;
 
@@ -345,8 +347,9 @@ export function resolveEffects(state, uid, effects, targetUid, combat) {
         break;
 
       case 'damageSelf':
-        combat.dealDamage(state, { kind: 'unit', id: uid }, e.n, u.side === 0 ? 1 : 0, false);
+        combat.dealDamage(state, { kind: 'unit', id: uid }, e.n, u.side === 0 ? 1 : 0, false, { mayBeSaved: true });
         applied.push('damageSelf');
+        if (heldForSave(state, uid, effects, i, targetUid)) return applied;
         break;
 
       case 'stripOnAttack':
@@ -372,6 +375,14 @@ export function resolveEffects(state, uid, effects, targetUid, combat) {
   return applied;
 }
 
+/** If the damage just dealt opened a would-be-defeated decision, park the rest of the effects on it. */
+function heldForSave(state, uid, effects, i, targetUid) {
+  const p = state.pending;
+  if (!p || p.kind !== 'window' || !p.outside) return false;
+  p.cont = { uid: uid, effects: effects.slice(i + 1), targetUid: targetUid };
+  return true;
+}
+
 /**
  * After a Push or Pull decision ends: resolve whatever effects followed it.
  * @param {Object} state
@@ -384,62 +395,6 @@ export function resumeEffects(state, cont, combat) {
   resolveEffects(state, cont.uid, cont.effects, cont.targetUid, combat);
 }
 
-/**
- * Push or Pull (rulebook 2026-10-30, "Push" and "Pull"). The target moves one hex at a time, each
- * hex strictly further from (Push) or closer to (Pull) the source, ignoring terrain and Engagement
- * costs. It may not be moved onto higher ground: that, impassable terrain, or another unit or
- * Garrison in the way is a collision, which stops it and deals 2 damage to everything involved
- * (non-combat damage, so Shields stop it and Fracture does not). The board edge just stops it. An
- * enemy already adjacent at the same elevation cannot be Pulled.
- *
- * Where several hexes qualify, the engine picks the one with the lowest key, so a push resolves
- * the same way every time. The rulebook lets the pushing player choose; this is a simplification
- * recorded in PLAN.md.
- *
- * @param {Object} state
- * @param {Object} source the unit doing the pushing or pulling
- * @param {string} targetUid
- * @param {number} n hexes
- * @param {'push'|'pull'} mode
- * @param {Object} combat injected combat module
- * @returns {boolean} whether anything happened
- */
-export function displace(state, source, targetUid, n, mode, combat) {
-  const t = state.units[targetUid];
-  if (!t || !t.alive || !t.hex || !source.hex) return false;
-  if (mode === 'pull' && Hex.distance(source.hex, t.hex) === 1 &&
-      State.elevationAt(state, source.hex) === State.elevationAt(state, t.hex)) return false;
-
-  const from = { q: t.hex.q, r: t.hex.r };
-  let moved = 0;
-  for (let step = 0; step < n; step++) {
-    const d = Hex.distance(source.hex, t.hex);
-    const options = Hex.neighbours(t.hex).filter(function (h) {
-      const nd = Hex.distance(source.hex, h);
-      return mode === 'push' ? nd > d : nd < d && !Hex.equals(h, source.hex);
-    }).sort(function (a, b) { return Hex.key(a) < Hex.key(b) ? -1 : 1; });
-    if (!options.length) break;
-    const to = options[0];
-    const cell = State.cellAt(state, to);
-    if (!cell) break; // the board edge: no collision, the movement just ends
-    const kind = state.rules.terrain[cell.terrain];
-    const higher = cell.elevation > State.elevationAt(state, t.hex);
-    const other = State.unitAt(state, to);
-    const g = State.garrisonAt(state, to);
-    if (higher || kind.impassable || other || g) {
-      const dmg = state.rules.movement.collisionDamage;
-      state.log.push({ t: 'collision', uid: t.uid, at: { q: to.q, r: to.r }, with: other ? other.uid : g ? g.gid : 'terrain', sound: 'hit', notice: true });
-      combat.dealDamage(state, { kind: 'unit', id: t.uid }, dmg, source.side, false);
-      if (other) combat.dealDamage(state, { kind: 'unit', id: other.uid }, dmg, source.side, false);
-      if (g) combat.dealDamage(state, { kind: 'garrison', id: g.gid }, dmg, source.side, false);
-      break;
-    }
-    t.hex = { q: to.q, r: to.r };
-    moved++;
-  }
-  if (moved) state.log.push({ t: mode, uid: t.uid, by: source.uid, from: from, to: t.hex ? { q: t.hex.q, r: t.hex.r } : null, hexes: moved });
-  return true;
-}
 
 /**
  * Raise a response event and fire whatever answers it.
@@ -448,20 +403,65 @@ export function displace(state, source, targetUid, n, mode, combat) {
  * them different from commands. Only the unit's OWN responses are considered
  * here; a reaction to somebody else's event is a Tactics card's job.
  *
+ * With `interactive`, a response the player may decline, or one with more than one possible target, opens a
+ * decision (`state.pending.kind === 'trigger'`) instead of resolving at once; the rest wait on it. Without it (events
+ * raised in the middle of an attack) each resolves on its first target, as before.
+ *
  * @param {Object} state
  * @param {string} uid
  * @param {string} event
  * @param {Object} combat
+ * @param {boolean} [interactive]
  */
-export function raise(state, uid, event, combat) {
+export function raise(state, uid, event, combat, interactive) {
   const u = state.units[uid];
   if (!u || !u.alive) return;
-  const list = abilitiesOf(u);
-  for (let i = 0; i < list.length; i++) {
-    const a = list[i];
-    if (a.timing !== 'response' || a.on !== event) continue;
-    if (!conditionHolds(state, u, a.when)) continue;
+  const queue = abilitiesOf(u)
+    .filter(function (a) { return a.timing === 'response' && a.on === event; })
+    .map(function (a) { return a.aid; });
+  runTriggers(state, uid, queue, combat, Boolean(interactive));
+}
+
+function runTriggers(state, uid, queue, combat, interactive) {
+  const u = state.units[uid];
+  while (queue.length) {
+    if (!u.alive || state.pending) return;
+    const a = ability(u, queue.shift());
+    if (!a || !conditionHolds(state, u, a.when)) continue;
     const targets = targetsFor(state, u, a);
-    resolve(state, uid, a, targets.length ? targets[0] : null, combat);
+    if (a.target && a.target !== 'self' && !targets.length) continue;
+    if (interactive && (a.optional || targets.length > 1)) {
+      state.pending = {
+        kind: 'trigger', side: u.side, uid: uid, aid: a.aid, targets: targets,
+        optional: Boolean(a.optional), rest: queue.slice()
+      };
+      return;
+    }
+    resolve(state, uid, a, targets[0] || null, combat);
   }
+}
+
+/** The open trigger decision's options: use it (on each possible target), or decline it when it is optional. */
+export function triggerOptions(state) {
+  const p = state.pending;
+  const out = p.targets.map(function (t) {
+    const o = { type: 'trigger', side: p.side, uid: p.uid, aid: p.aid };
+    if (t) o.targetUid = t;
+    return o;
+  });
+  if (p.optional) out.push({ type: 'trigger_skip', side: p.side, uid: p.uid, aid: p.aid });
+  return out;
+}
+
+/** Resolve the trigger decision, then whatever responses were waiting behind it. */
+export function decideTrigger(state, action, combat) {
+  const p = state.pending;
+  state.pending = null;
+  const u = state.units[p.uid];
+  if (action.type === 'trigger' && u && u.alive) {
+    resolve(state, p.uid, ability(u, p.aid), action.targetUid || null, combat);
+  } else {
+    state.log.push({ t: 'declined', uid: p.uid, aid: p.aid });
+  }
+  runTriggers(state, p.uid, p.rest.slice(), combat, true);
 }
