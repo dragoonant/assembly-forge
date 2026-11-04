@@ -1,24 +1,37 @@
 // Squad select and the mission briefing, ported from the 2D game. Both are one flow and share one overlay.
-import { displayName, Names, SCENARIO_ID, sideName, squadsFor, TEAM_ORDER, teamUnits } from '../engine'
+import { displayName, Names, Packs, roleName, SCENARIO_ID, sideName, squadsFor, teamName, teamNote, teamOrder, teamUnits } from '../engine'
+import { choosePack } from '../packs'
 import { chooseTeam, deploy, toBrief, toSelect } from '../game'
 import { HUMAN, useGame } from '../store'
 
 function Select() {
   const myTeam = useGame((s) => s.myTeam)
   const S = Names.SETUP
+  const packs = Packs.list()
+  const current = Packs.activeId()
   return (
     <div className="setup-panel" data-testid="select">
       <h2>{S.chooseTitle}</h2>
       <p className="dim">{S.chooseHint}</p>
+      {packs.length > 1 && (
+        <div className="pack-toggle" data-testid="pack-toggle">
+          <span className="dim">Roster:</span>
+          {packs.map((p) => (
+            <button key={p.id} className={p.id === current ? 'on' : ''} data-testid={'pack-' + p.id} onClick={() => choosePack(p.id)}>
+              {p.label}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="team-grid">
-        {TEAM_ORDER.map((tid) => (
+        {teamOrder().map((tid) => (
           <button key={tid} className={'team' + (myTeam === tid ? ' chosen' : '')} data-testid={'team-' + tid} onClick={() => chooseTeam(tid)}>
-            <strong>{Names.TEAMS[tid]}</strong>
-            <span className="dim">{Names.TEAM_NOTES[tid]}</span>
+            <strong>{teamName(tid)}</strong>
+            <span className="dim">{teamNote(tid)}</span>
             <ul>
               {teamUnits(tid).map((d) => (
                 <li key={d}>
-                  {displayName(d)} <span className="dim">· {Names.ROLES[d]}</span>
+                  {displayName(d)} <span className="dim">· {roleName(d)}</span>
                 </li>
               ))}
             </ul>
@@ -56,10 +69,10 @@ function Brief() {
         {([0, 1] as const).map((side) => (
           <div key={side} className={'force s' + side}>
             <h4>{side === HUMAN ? S.yourSquad : S.enemySquad} · {sideName(side)}</h4>
-            <div className="dim">{Names.TEAMS[side === HUMAN ? myTeam! : foeTeam!]}</div>
+            <div className="dim">{teamName(side === HUMAN ? myTeam! : foeTeam!)}</div>
             {squads[side].map((d) => (
               <div key={d}>
-                {displayName(d)} <span className="dim">· {Names.ROLES[d]}</span>
+                {displayName(d)} <span className="dim">· {roleName(d)}</span>
               </div>
             ))}
           </div>

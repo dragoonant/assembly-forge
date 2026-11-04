@@ -29,3 +29,9 @@ e2e-out/
 
 # Full-resolution art and model masters stay local; the game ships cut copies.
 assets/masters/
+
+# Owner reference images and raw concept art stay local; the game ships only finished models.
+art/
+
+# Local content packs: rosters that exist only on this machine. Never committed, never built by CI. See docs/packs.md.
+src/content/packs/local/

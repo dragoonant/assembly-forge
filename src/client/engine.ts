@@ -7,6 +7,8 @@ import * as TextJs from '../content/abilitytext.js'
 import * as NamesJs from '../content/names.js'
 import * as SkirmishJs from '../content/scenarios/skirmish.js'
 import * as TeamsJs from '../content/teams.js'
+import * as PacksJs from '../content/packs.js'
+import * as UnitsJs from '../content/units.js'
 import * as ActionsJs from '../engine/actions.js'
 import * as ApplyJs from '../engine/apply.js'
 import * as CombatJs from '../engine/combat.js'
@@ -158,7 +160,24 @@ const Skirmish = SkirmishJs as any
 
 export const Names = NamesJs as any
 export const Text = TextJs as any
-export const TEAM_ORDER: string[] = (TeamsJs as any).TEAM_ORDER
+/** The active pack's team ids, in menu order. A function, because the active pack is chosen at startup. */
+export const teamOrder = (): string[] => (TeamsJs as any).teamOrder()
+export const roleName = (defId: string): string => Names.roleName(defId)
+export const teamName = (tid: string): string => Names.teamName(tid)
+export const teamNote = (tid: string): string => Names.teamNote(tid)
+/** Which built-in stand-in figure a unit uses: its own id for our cast, the pack's choice for a pack unit. */
+export const standInFor = (defId: string): string => (UnitsJs as any).standInFor(defId)
+
+export interface PackInfo {
+  id: string
+  label: string
+}
+export const Packs = {
+  register: (p: unknown): void => (PacksJs as any).registerPack(p),
+  activate: (id: string | null): void => (PacksJs as any).activate(id),
+  list: (): PackInfo[] => (PacksJs as any).listPacks(),
+  activeId: (): string => ((PacksJs as any).activePack()?.id as string | undefined) ?? (PacksJs as any).BUILT_IN,
+}
 export const SCENARIO_ID: string = Skirmish.SCENARIO_ID
 
 export function newSkirmish(seed: string, playerTeam?: string, enemyTeam?: string): GameState {

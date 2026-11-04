@@ -9,6 +9,7 @@ import { useFrame, type ThreeEvent } from '@react-three/fiber'
 import { useRef } from 'react'
 import type { Group, Mesh, MeshBasicMaterial } from 'three'
 import { Figure } from './Figure'
+import { standInFor } from '../engine'
 
 export const SIDE_COLOUR = ['#c8463a', '#3a78c8'] as const
 const DARK = '#3b4048'
@@ -58,7 +59,7 @@ function Box({ p, s, c, emissive }: { p: [number, number, number]; s: [number, n
 
 /** The figure itself, facing +z, feet at y = 0. */
 export function Rig({ defId, side }: { defId: string; side: 0 | 1 }) {
-  const b = BUILDS[defId] ?? BUILDS.u01!
+  const b = BUILDS[defId] ?? BUILDS[standInFor(defId)] ?? BUILDS.u01!
   const accent = SIDE_COLOUR[side]
   const head = MACHINE_HEIGHT / 2.8 // about 0.39
   const legH = head * 0.95

@@ -10,6 +10,8 @@
  */
 
 /** The roster. Ids are this project's own numbering. */
+import { activePack } from './packs.js';
+
 export const UNITS = Object.freeze({
   u01: 'Vanguard Titan',
   u02: 'Comet Raider',
@@ -237,8 +239,37 @@ export const UI = Object.freeze({
  *          shows up as an obvious placeholder rather than as blank space
  */
 export function displayName(id) {
-  return UNITS[id] || WEAPONS[id] || ACTIONS[id] || TERRAIN[id] ||
+  const pack = activePack();
+  return (pack && pack.names[id]) || UNITS[id] || WEAPONS[id] || ACTIONS[id] || TERRAIN[id] ||
     STATUSES[id] || UPGRADES[id] || id;
+}
+
+/**
+ * A unit's one-phrase role, from the active pack or the built-in cast.
+ * @param {string} defId
+ * @returns {string}
+ */
+export function roleName(defId) {
+  const pack = activePack();
+  return (pack && pack.roles && pack.roles[defId]) || ROLES[defId] || '';
+}
+
+/**
+ * @param {string} tid
+ * @returns {string}
+ */
+export function teamName(tid) {
+  const pack = activePack();
+  return (pack && pack.teamNames && pack.teamNames[tid]) || TEAMS[tid] || tid;
+}
+
+/**
+ * @param {string} tid
+ * @returns {string}
+ */
+export function teamNote(tid) {
+  const pack = activePack();
+  return (pack && pack.teamNotes && pack.teamNotes[tid]) || TEAM_NOTES[tid] || '';
 }
 
 /**

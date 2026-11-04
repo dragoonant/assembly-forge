@@ -2,7 +2,7 @@
 // `perform`: apply it with the engine, play the blocking animation beats (a walk, a deploy, a shot), show the dice for an
 // attack, then commit the new state and start the effects (bursts, wrecks, labels, banners). The board therefore never
 // jumps to a result before the motion that caused it, and damage lands with the dice (the 2D game's rule, kept).
-import { apply, displayName, isTerminal, newSkirmish, TEAM_ORDER, aiChoose, type Action, type GameState } from './engine'
+import { apply, displayName, isTerminal, newSkirmish, teamOrder, aiChoose, type Action, type GameState } from './engine'
 import { music } from './audio/sound'
 import { clearEffects, runBeats, runEffects, SPEED_FACTOR } from './presentation/director'
 import { newEntries, plan } from './presentation/plan'
@@ -37,7 +37,8 @@ export function newGame(): void {
 
 /** Pick the player's squad; the opponent draws one of the four at random (an interface choice, so Math.random is fine). */
 export function chooseTeam(tid: string): void {
-  const foe = TEAM_ORDER[Math.floor(Math.random() * TEAM_ORDER.length)]!
+  const order = teamOrder()
+  const foe = order[Math.floor(Math.random() * order.length)]!
   setStore({ myTeam: tid, foeTeam: foe })
   music(true)
 }

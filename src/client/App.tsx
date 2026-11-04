@@ -8,7 +8,7 @@ import { useEffect } from 'react'
 import { BoardCanvas } from './board/BoardCanvas'
 import { frameFor, hexToWorld, topOf } from './board/hexLayout'
 import { viewApi } from './board/viewApi'
-import { cellsOf, isTerminal, legalActions, TEAM_ORDER, type Action, type GameState } from './engine'
+import { cellsOf, isTerminal, legalActions, teamOrder, type Action, type GameState } from './engine'
 import { deploy, maybeRunAI, take } from './game'
 import { loadMuted, music } from './audio/sound'
 import { skipBeat } from './presentation/director'
@@ -46,7 +46,8 @@ function readParams(): void {
   if (speed === 'fast' || speed === 'instant') setStore({ speed: speed as Speed })
   const team = p.get('team')
   const foe = p.get('foe')
-  if (team && TEAM_ORDER.includes(team)) setStore({ myTeam: team, foeTeam: foe && TEAM_ORDER.includes(foe) ? foe : team })
+  const order = teamOrder()
+  if (team && order.includes(team)) setStore({ myTeam: team, foeTeam: foe && order.includes(foe) ? foe : team })
   if (p.get('auto') === '1' && getStore().myTeam) deploy(p.get('seed') ?? undefined)
 }
 

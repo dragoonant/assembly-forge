@@ -15,6 +15,8 @@
  * player reads. This file is composition only.
  */
 
+import { activePack } from './packs.js';
+
 /** @typedef {{tid: string, units: string[]}} Team */
 
 export const TEAMS = Object.freeze({
@@ -32,15 +34,31 @@ export const TEAMS = Object.freeze({
   t_spear: Object.freeze({ tid: 't_spear', units: Object.freeze(['u05', 'u03', 'u02']) })
 });
 
-/** Menu order. */
+/** Menu order for the built-in cast. Use `teamOrder()`, which follows the active pack. */
 export const TEAM_ORDER = Object.freeze(['t_lance', 't_hammer', 't_anvil', 't_spear']);
+
+/** @returns {string[]} the active pack's team order, or the built-in one */
+export function teamOrder() {
+  const pack = activePack();
+  return pack ? pack.teamOrder.slice() : TEAM_ORDER.slice();
+}
+
+/**
+ * @param {string} tid
+ * @returns {boolean}
+ */
+export function hasTeam(tid) {
+  const pack = activePack();
+  return Boolean(pack ? pack.teams[tid] : TEAMS[tid]);
+}
 
 /**
  * @param {string} tid
  * @returns {Team}
  */
 export function team(tid) {
-  const t = TEAMS[tid];
+  const pack = activePack();
+  const t = pack ? pack.teams[tid] && { tid: tid, units: pack.teams[tid].units } : TEAMS[tid];
   if (!t) throw new Error('No team: ' + tid);
   return t;
 }
@@ -57,6 +75,7 @@ export function team(tid) {
  * @returns {{tid: string, state: number}}
  */
 export function pickOpponentTeam(rngStep, rngState) {
-  const r = rngStep(rngState, TEAM_ORDER.length);
-  return { tid: TEAM_ORDER[r.value], state: r.state };
+  const order = teamOrder();
+  const r = rngStep(rngState, order.length);
+  return { tid: order[r.value], state: r.state };
 }

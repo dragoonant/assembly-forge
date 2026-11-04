@@ -41,6 +41,8 @@
  *   {dice: n}          roll n more dice, resolved before damage
  */
 
+import { activePack } from './packs.js';
+
 export const UNITS = Object.freeze({
   // Tanky, fast enough to contest markers, and the only unit that wants to be
   // next to a garrison. Low VP: killing it is poor value.
@@ -200,11 +202,24 @@ export const UNITS = Object.freeze({
 export const ROSTER = Object.freeze(['u01', 'u02', 'u03', 'u04', 'u05', 'u06']);
 
 /**
+ * Which built-in machine's stand-in figure a unit borrows. A pack unit names one (`standIn`); our own units are their
+ * own stand-ins.
+ * @param {string} defId
+ * @returns {string}
+ */
+export function standInFor(defId) {
+  const pack = activePack();
+  const d = pack && pack.units[defId];
+  return (d && d.standIn) || defId;
+}
+
+/**
  * @param {string} defId
  * @returns {Object}
  */
 export function def(defId) {
-  const d = UNITS[defId];
+  const pack = activePack();
+  const d = (pack && pack.units[defId]) || UNITS[defId];
   if (!d) throw new Error('No unit definition: ' + defId);
   return d;
 }

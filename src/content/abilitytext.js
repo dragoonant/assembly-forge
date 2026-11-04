@@ -24,6 +24,7 @@
  */
 
 import { STATUSES, WEAPONS, displayName } from './names.js';
+import { activePack } from './packs.js';
 
 /** Ability names, by the ids in `src/content/units.js`. */
 export const ABILITIES = Object.freeze({
@@ -193,7 +194,8 @@ export function abilityCost(a) {
  * @returns {string}
  */
 export function abilityName(aid) {
-  return ABILITIES[aid] || aid;
+  const pack = activePack();
+  return (pack && pack.names[aid]) || ABILITIES[aid] || aid;
 }
 
 // --- Small helpers -----------------------------------------------------------

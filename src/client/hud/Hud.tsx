@@ -8,6 +8,7 @@ import {
   conditionHolds,
   displayName,
   isEngaged,
+  roleName,
   isTerminal,
   Names,
   sideName,
@@ -157,7 +158,7 @@ function ActionPanel({ game }: { game: GameState }) {
   return (
     <section className="panel actions" data-testid="actions">
       <div className="panel-head">
-        {displayName(u.defId)} <span className="dim">· {Names.ROLES[u.defId] ?? ''}</span>
+        {displayName(u.defId)} <span className="dim">· {roleName(u.defId)}</span>
       </div>
       {has('deploy') && <p className="hint">In reserve. Click the glowing hex on your base to deploy, then move off it.</p>}
       {u.hex && one('advance')?.slowed && <p className="hint">Mired: this Advance goes nowhere, but clears the status.</p>}
@@ -247,7 +248,7 @@ function UnitCard({ game, u }: { game: GameState; u: EngineUnit }) {
   return (
     <section className={'panel ucard ' + SIDE_CLASS[u.side]} data-testid="unit-card">
       <div className="ucard-name">{displayName(u.defId)}</div>
-      <div className="dim">{Names.ROLES[u.defId] ?? ''} · {sideName(u.side)}{u.inReserve ? ' · in reserve' : ''}</div>
+      <div className="dim">{roleName(u.defId)} · {sideName(u.side)}{u.inReserve ? ' · in reserve' : ''}</div>
       <div className="ucard-stats">
         <span><em>{UI.hp}</em>{u.hp}/{u.maxHp}</span>
         <span><em>{UI.vp}</em>{u.vp}</span>

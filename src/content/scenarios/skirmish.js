@@ -111,8 +111,10 @@ export const SQUAD_SIZE = 3;
  * @returns {[string[], string[]]}
  */
 export function squadsFor(playerTeam, enemyTeam) {
-  const a = Teams.TEAMS[playerTeam] ? playerTeam : DEFAULT_TEAMS[0];
-  const b = Teams.TEAMS[enemyTeam] ? enemyTeam : DEFAULT_TEAMS[1];
+  const order = Teams.teamOrder();
+  const fallback = Teams.hasTeam(DEFAULT_TEAMS[0]) ? DEFAULT_TEAMS : [order[0], order[1] || order[0]];
+  const a = playerTeam && Teams.hasTeam(playerTeam) ? playerTeam : fallback[0];
+  const b = enemyTeam && Teams.hasTeam(enemyTeam) ? enemyTeam : fallback[1];
   return [Teams.team(a).units.slice(), Teams.team(b).units.slice()];
 }
 
