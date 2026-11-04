@@ -243,6 +243,8 @@ export function instance(uid, defId, side, hex) {
     hp: d.hp,
     vp: d.vp,
     tl: d.tl,
+    // Traits ride along on the instance: some are rules (a pack unit's 'hover'), not just deck gating.
+    traits: (d.traits || []).slice(),
     weapons: d.weapons.map(function (w) {
       return {
         wid: w.wid, tlCost: w.tlCost, range: w.range, strength: w.strength,

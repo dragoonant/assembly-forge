@@ -29,11 +29,15 @@ import { setMuted } from '../audio/sound'
 
 const SIDE_CLASS = ['s0', 's1'] as const
 
+/** Short label for a Timeline chip: the first letter of each word, letters and digits only, at most four. */
 function initials(defId: string): string {
   return displayName(defId)
-    .split(' ')
+    .split(/[^A-Za-z0-9]+/)
+    .filter((w: string) => w.length > 0)
     .map((w: string) => w.charAt(0))
     .join('')
+    .slice(0, 4)
+    .toUpperCase()
 }
 
 function useAffordances() {
