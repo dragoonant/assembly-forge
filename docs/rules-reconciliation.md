@@ -64,18 +64,28 @@ Energy uncapped; Garrisons fall to any damage; Rescue and Garrison kills are 2 V
 2. **Push and Pull pick a hex deterministically** (the lowest key among the qualifying hexes) where
    the rulebook lets the pushing player choose. Nothing in the current content pushes or pulls; the
    effect exists so content can.
-3. **Engaged attacks** are restricted for single-target weapons. Area attacks, which only need to
-   include one Engaged enemy, are not implemented.
+3. **Automatic decks.** A pack's nine-card deck is built for each side (its squad's signature cards, then open cards
+   in the pack's order) rather than chosen by the player.
 4. **The accuracy cap of plus or minus five** stays. No source has a cap; the natural 1, 9 and 10
    rules make it harmless.
 5. **The forced pass** (`actions.forcedPassTlCost`) stays as a wedge guard. It never fires in play:
    Energize is always available, and the rulebook's own Energize fallback covers a boxed-in Base.
 
+## Added for card mechanics (2026-11-03)
+
+The attack is a resumable sequence in `src/engine/attack.js`, in the rulebook's order, with response windows before
+the roll, after the roll (attacker, then Disarm, then defender) and after damage, plus a window when a unit would be
+defeated. Also: area weapons aimed in six directions (one roll, hits per target, units ignored for line of sight, an
+Engaged attacker must include an Engaged enemy); per-unit crit thresholds; crits that add damage per crit, grant a Move
+or repeat the attack; weapon effects before the roll, after it and after damage; granted additional actions that can
+chain; weapon-specific and conditional bonuses; Attack cards replacing the Primary Attack; one Tactics card per player
+per activation. Tests: `tests/engine/mechanics-suite.js`.
+
 ## Deferred until content needs them (PLAN.md D10)
 
 Carriers, remote weapon tokens, Reinforcements, carried Objectives, Challenge, Swap, Reposition,
-Setup abilities, area-of-effect weapons, the four named attack Response windows, the Primary
-keyword on Tactics cards, and Timeline cost reductions to 0 becoming additional actions.
+Setup abilities, the Primary keyword on Tactics cards, and Timeline cost reductions to 0 becoming
+additional actions.
 
 ## Balance after reconciliation
 
