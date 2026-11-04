@@ -18,6 +18,7 @@
  * `structuredClone` and replays exactly.
  */
 
+import * as Displace from './displace.js';
 import * as Effects from './effects.js';
 import * as Hex from './hex.js';
 import * as Los from './los.js';
@@ -285,10 +286,17 @@ function weaponEffects(state, a, when) {
   const attacker = state.units[a.uid];
   for (const e of a.weapon.effects || []) {
     if (e.when !== when) continue;
+    if (e.k === 'pull' || e.k === 'push') {
+      // the attacking player chooses each step; several targets are moved one after another
+      const ids = livingTargets(state, a).filter(function (r) { return r.kind === 'unit'; }).map(function (r) { return r.id; });
+      while (ids.length && !state.pending) {
+        const first = ids.shift();
+        if (Displace.begin(state, attacker, first, e.n, e.k, null, ids.slice())) state.pending.queueN = e.n;
+      }
+      continue;
+    }
     for (const ref of livingTargets(state, a)) {
-      if (e.k === 'pull' && ref.kind === 'unit') Effects.displace(state, attacker, ref.id, e.n, 'pull', combat);
-      else if (e.k === 'push' && ref.kind === 'unit') Effects.displace(state, attacker, ref.id, e.n, 'push', combat);
-      else if (e.k === 'shieldsOff' && ref.kind === 'unit') {
+      if (e.k === 'shieldsOff' && ref.kind === 'unit') {
         const t = state.units[ref.id];
         t.shieldSpent = State.upgradeCount(t, 'shield') * state.rules.upgrades.shieldAbsorb;
         state.log.push({ t: 'shields_off', uid: t.uid });
@@ -387,6 +395,7 @@ export function pendingOptions(state) {
   const p = state.pending;
   const a = current(state);
   if (!p) return [];
+  if (p.kind === 'displace') return Displace.options(state);
   if (p.kind === 'window') {
     let opts;
     if (p.window === 'wouldBeDefeated') {

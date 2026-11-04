@@ -27,6 +27,7 @@
  *             activating.
  */
 
+import * as Displace from './displace.js';
 import * as Hex from './hex.js';
 import * as State from './state.js';
 
@@ -232,11 +233,39 @@ export function canUseCommand(state, u, a) {
  */
 export function resolve(state, uid, a, targetUid, combat) {
   const u = State.unit(state, uid);
+  const applied = resolveEffects(state, uid, a.effects, targetUid, combat);
+
+  if (a.energy) u.energy -= a.energy;
+
+  state.log.push({
+    t: 'ability', uid: uid, aid: a.aid, target: targetUid || null,
+    applied: applied, sound: 'ability', notice: true
+  });
+  return { applied: applied };
+}
+
+/**
+ * Resolve a list of effects in order. A Push or Pull with somewhere to go opens the acting player's choice and stops
+ * here; the effects after it are carried on the pending decision and resolved by `resumeEffects` when it ends
+ * (rulebook: resolve each effect entirely, in the order printed).
+ *
+ * @returns {string[]} the effect kinds applied before any pause
+ */
+export function resolveEffects(state, uid, effects, targetUid, combat) {
+  const u = State.unit(state, uid);
   const applied = [];
 
-  for (let i = 0; i < a.effects.length; i++) {
-    const e = a.effects[i];
+  for (let i = 0; i < effects.length; i++) {
+    const e = effects[i];
     if (!u.alive && e.k !== 'energy') break;
+    if ((e.k === 'push' || e.k === 'pull') && targetUid && state.activation) {
+      const cont = { uid: uid, effects: effects.slice(i + 1), targetUid: targetUid };
+      if (Displace.begin(state, u, targetUid, e.n, e.k, cont, null)) {
+        applied.push(e.k);
+        return applied;
+      }
+      continue;
+    }
     switch (e.k) {
       case 'strength':
       case 'accuracy':
@@ -340,14 +369,19 @@ export function resolve(state, uid, a, targetUid, combat) {
         throw new Error('Unknown effect kind: ' + e.k);
     }
   }
+  return applied;
+}
 
-  if (a.energy) u.energy -= a.energy;
-
-  state.log.push({
-    t: 'ability', uid: uid, aid: a.aid, target: targetUid || null,
-    applied: applied, sound: 'ability', notice: true
-  });
-  return { applied: applied };
+/**
+ * After a Push or Pull decision ends: resolve whatever effects followed it.
+ * @param {Object} state
+ * @param {?Object} cont `{uid, effects, targetUid}`
+ * @param {Object} combat
+ */
+export function resumeEffects(state, cont, combat) {
+  if (!cont || !cont.effects.length) return;
+  if (!state.units[cont.uid] || !state.units[cont.uid].alive) return;
+  resolveEffects(state, cont.uid, cont.effects, cont.targetUid, combat);
 }
 
 /**

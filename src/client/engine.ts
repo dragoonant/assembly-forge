@@ -112,7 +112,9 @@ export interface LogEntry {
 }
 
 export interface Pending {
-  kind: 'window' | 'react_move' | 'react_attack'
+  kind: 'window' | 'react_move' | 'react_attack' | 'displace'
+  mode?: 'push' | 'pull'
+  left?: number
   window?: string
   role?: string
   side?: Side
@@ -170,6 +172,7 @@ export interface Action {
   areaHexes?: Axial[]
   targets?: { kind: 'unit' | 'garrison'; id: string }[]
   grant?: number
+  collide?: boolean
 }
 
 const State = StateJs as any

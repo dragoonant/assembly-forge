@@ -12,11 +12,13 @@ export interface Affordances {
   shootAt: Map<string, Action[]>
   /** Unit ids that can be attacked right now with the armed weapon (or any weapon when none is armed). */
   targetable: Set<string>
+  /** Hex key -> a Push or Pull step the player may choose (a collision when `collide` is set). */
+  pushTo: Map<string, Action>
 }
 
 export const hexKey = (h: { q: number; r: number }): string => h.q + ',' + h.r
 
-const EMPTY: Affordances = { legal: [], moveTo: new Map(), deployTo: new Map(), shootAt: new Map(), targetable: new Set() }
+const EMPTY: Affordances = { legal: [], moveTo: new Map(), deployTo: new Map(), shootAt: new Map(), targetable: new Set(), pushTo: new Map() }
 
 export function affordances(game: GameState | null, armed: string | null, active: boolean): Affordances {
   if (!game || !active || isTerminal(game)) return EMPTY
@@ -25,7 +27,12 @@ export function affordances(game: GameState | null, armed: string | null, active
   const deployTo = new Map<string, Action>()
   const shootAt = new Map<string, Action[]>()
   const targetable = new Set<string>()
+  const pushTo = new Map<string, Action>()
   for (const a of legal) {
+    if (a.type === 'displace' && a.to) {
+      pushTo.set(hexKey(a.to), a)
+      continue
+    }
     if ((a.type === 'advance' || a.type === 'dash' || a.type === 'move' || a.type === 'react_move') && a.to) {
       const k = hexKey(a.to)
       const have = moveTo.get(k)
@@ -49,11 +56,13 @@ export function affordances(game: GameState | null, armed: string | null, active
       }
     }
   }
-  return { legal, moveTo, deployTo, shootAt, targetable }
+  return { legal, moveTo, deployTo, shootAt, targetable, pushTo }
 }
 
 /** The single action a click on a hex means, or null. Deploy, then attack (armed), then move. */
 export function actionForHex(af: Affordances, key: string, armed: string | null): Action | null {
+  const push = af.pushTo.get(key)
+  if (push) return push
   const d = af.deployTo.get(key)
   if (d) return d
   const shots = af.shootAt.get(key)

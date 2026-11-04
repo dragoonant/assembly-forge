@@ -167,6 +167,8 @@ export function scoreAction(state, action, side) {
     case 'dash':     return action.free && action.type === 'dash' ? scoreMove(state, Object.assign({}, action, { type: 'move' }), side) : scoreMove(state, action, side);
     case 'react_attack': return scoreAttack(state, Object.assign({}, action, { free: true }), side) + 1;
     case 'respond':  return scoreResponse(state, action, side);
+    case 'displace':
+    case 'displace_stop': return scoreDisplace(state, action, side);
     case 'pass':     return 0;
     case 'command':  return scoreCommand(state, action, side);
     case 'tactics':  return scoreTactics(state, action, side);
@@ -255,6 +257,25 @@ export function scoreAttack(state, action, side) {
  * @param {0|1} side
  * @returns {number}
  */
+/**
+ * A Push or Pull step, judged by applying it: the evaluation afterwards, plus the collision damage it deals when the
+ * target is an enemy. Deterministic, so a real lookahead costs nothing.
+ * @param {Object} state
+ * @param {Object} action
+ * @param {0|1} side
+ * @returns {number}
+ */
+export function scoreDisplace(state, action, side) {
+  const before = Evaluate.evaluate(state, side);
+  let after;
+  try {
+    after = Apply.apply(state, action);
+  } catch (e) {
+    return -TUNING.wasted;
+  }
+  return Evaluate.evaluate(after, side) - before + (action.type === 'displace_stop' ? 0 : 0.5);
+}
+
 /**
  * What holding a card is worth right now. A card still in hand when the game ends is worth nothing, so the price of
  * playing one falls as the game runs down: full early in Phase 1, a quarter by the last rounds.

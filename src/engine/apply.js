@@ -14,6 +14,7 @@
 
 import * as Actions from './actions.js';
 import * as Attack from './attack.js';
+import * as Displace from './displace.js';
 import * as Combat from './combat.js';
 import * as Effects from './effects.js';
 import * as Hex from './hex.js';
@@ -36,6 +37,17 @@ export function apply(state, action) {
 
   const next = State.clone(state);
   const act = next.activation;
+
+  // A Push or Pull step: when it ends, finish the ability that started it, then any paused attack.
+  if (canonical.type === 'displace' || canonical.type === 'displace_stop') {
+    const cont = next.pending.cont;
+    if (Displace.decide(next, canonical, Combat)) {
+      Effects.resumeEffects(next, cont, Combat);
+      if (!next.pending) Attack.run(next);
+    }
+    afterAttackSettles(next);
+    return next;
+  }
 
   // Decisions on a paused attack: a response card, a pass, or a reacting unit's move or attack.
   if (canonical.type === 'respond' || canonical.type === 'pass' || canonical.type === 'react_move' || canonical.type === 'react_attack') {

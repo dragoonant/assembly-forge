@@ -61,9 +61,8 @@ Energy uncapped; Garrisons fall to any damage; Rescue and Garrison kills are 2 V
 
 1. **An occupied Base is unavailable** rather than treated "as though it were empty". No unit may
    end a move on a Base, so this only arises after a Push or Pull onto one, which no content does.
-2. **Push and Pull pick a hex deterministically** (the lowest key among the qualifying hexes) where
-   the rulebook lets the pushing player choose. Nothing in the current content pushes or pulls; the
-   effect exists so content can.
+2. *(Resolved 2026-11-03.)* Push and Pull are now the acting player's choice, hex by hex, with
+   collisions and stopping early; see `src/engine/displace.js`.
 3. **Automatic decks.** A pack's nine-card deck is built for each side (its squad's signature cards, then open cards
    in the pack's order) rather than chosen by the player.
 4. **The accuracy cap of plus or minus five** stays. No source has a cap; the natural 1, 9 and 10

@@ -24,7 +24,7 @@ const TERRAIN_COLOUR: Record<string, string> = {
   blocked: '#1f2126',
 }
 const GAP = 0.94 // hex prisms are drawn a hair small so a thin seam shows between tiles
-const HL = { move: '#5fd17a', dash: '#f0a830', deploy: '#7fd4ff', shoot: '#ff3b30', hover: '#ffffff' } as const
+const HL = { move: '#5fd17a', dash: '#f0a830', deploy: '#7fd4ff', shoot: '#ff3b30', hover: '#ffffff', push: '#c58cff' } as const
 
 /** Height of the top of a hex, or 0 off the board. */
 function topAt(game: GameState, h: Axial): number {
@@ -285,6 +285,9 @@ function Scene() {
       <HexTiles cells={cells} frame={frame} onPick={onPick} onHover={(c) => setStore({ hoverHex: c ? { q: c.q, r: c.r } : null })} />
       {[...af.moveTo.entries()].map(([k, a]) => (
         <HexRing key={'m' + k} at={hexToWorld(a.to!, frame)} y={topAt(game, a.to!)} colour={a.type === 'dash' ? HL.dash : HL.move} />
+      ))}
+      {[...af.pushTo.entries()].map(([k, a]) => (
+        <HexRing key={'p' + k} at={hexToWorld(a.to!, frame)} y={topAt(game, a.to!)} colour={a.collide ? HL.shoot : HL.push} inner={a.collide ? 0.55 : 0.7} />
       ))}
       {[...af.deployTo.entries()].map(([k, a]) => (
         <HexRing key={'d' + k} at={hexToWorld(a.to!, frame)} y={topAt(game, a.to!)} colour={HL.deploy} inner={0.6} />

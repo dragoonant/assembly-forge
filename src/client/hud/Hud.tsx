@@ -174,6 +174,22 @@ function DecisionPanel({ game }: { game: GameState }) {
     )
   }
   const who = p.uid ? displayName(game.units[p.uid]!.defId) : ''
+  if (p.kind === 'displace') {
+    const stop = af.legal.find((a) => a.type === 'displace_stop')
+    return (
+      <section className="panel actions decision" data-testid="decision">
+        <div className="panel-head">{p.mode === 'pull' ? 'Pull' : 'Push'} {who}</div>
+        <p className="hint">
+          Click a violet hex to move it ({p.left} left). A red hex is a collision: 2 damage to everything involved, and the {p.mode} ends.
+        </p>
+        {stop && (
+          <button className="act end" data-testid="act-displace_stop" onClick={() => take(stop)}>
+            <strong>Stop here</strong>
+          </button>
+        )}
+      </section>
+    )
+  }
   return (
     <section className="panel actions decision" data-testid="decision">
       <div className="panel-head">{who}</div>

@@ -10,6 +10,7 @@ import * as F from './fixtures.js';
 import * as Actions from '../../src/engine/actions.js';
 import * as Apply from '../../src/engine/apply.js';
 import * as Combat from '../../src/engine/combat.js';
+import * as AI from '../../src/ai/ai.js';
 import * as Hex from '../../src/engine/hex.js';
 import * as State from '../../src/engine/state.js';
 
@@ -127,7 +128,11 @@ T.suite('weapon and crit mechanics', function () {
     const w = { wid: 'hook', tlCost: 2, range: 3, strength: 6, effects: [{ when: 'beforeRoll', k: 'pull', n: 1 }, { when: 'afterRoll', k: 'shieldsOff' }] };
     let s = setup([F.unit('a1', 'u02', 0, H(0, 0), { tl: 1, weapons: [w] }), F.unit('b1', 'u06', 1, H(3, 0), { tl: 5, hp: 40, upgrades: ['shield'] })]);
     s = Apply.apply(s, legal(s, 'attack')[0]);
+    T.eq(s.pending && s.pending.kind, 'displace', 'the attacker chooses where the pull takes it');
+    T.notOk(lastAttack(s), 'and the attack waits for that choice');
+    s = Apply.apply(s, legal(s, 'displace').filter(function (d) { return !d.collide; })[0]);
     T.eq(Hex.distance(s.units.a1.hex, s.units.b1.hex), 2, 'pulled one hex closer');
+    T.ok(lastAttack(s), 'then the attack resolves');
     T.ok(!lastAttack(s).absorbed, 'the Shield did not absorb anything');
   });
 
@@ -266,6 +271,67 @@ T.suite('attack cards and surviving defeat', function () {
         s = Apply.apply(s, opts[(guard * 7 + seed) % opts.length]);
       }
       T.ok(Apply.isTerminal(s), 'the game finished');
+    }
+  });
+});
+
+T.suite('push and pull choices', function () {
+  function pusher(extra) {
+    const s = setup([F.unit('a1', 'u02', 0, H(0, 0), { tl: 1 }), F.unit('b1', 'u06', 1, H(1, 0), { tl: 5, hp: 40 })], null, extra);
+    s.units.a1.abilities = [{ aid: 'he', timing: 'command', target: 'adjacentEnemy', effects: [{ k: 'push', n: 2 }, { k: 'damage', n: 1 }] }];
+    return Apply.apply(s, { type: 'command', uid: 'a1', aid: 'he', targetUid: 'b1' });
+  }
+
+  T.test('the pushing player chooses each hex, among every hex strictly further away', function () {
+    const s = pusher();
+    T.eq(s.pending.kind, 'displace');
+    const steps = legal(s, 'displace');
+    T.ok(steps.length >= 2, 'more than one choice');
+    for (const d of steps) T.ok(Hex.distance(H(0, 0), d.to) === 2, 'each step goes further from the source');
+    T.ok(legal(s, 'displace_stop').length === 1, 'and stopping early is allowed');
+  });
+
+  T.test('the effects after a push wait for it, then resolve', function () {
+    let s = pusher();
+    const hp = s.units.b1.hp;
+    T.eq(hp, 40, 'no damage yet');
+    s = Apply.apply(s, legal(s, 'displace').filter(function (d) { return !d.collide; })[0]);
+    s = Apply.apply(s, legal(s, 'displace').filter(function (d) { return !d.collide; })[0]);
+    T.notOk(s.pending, 'the push has ended');
+    T.eq(Hex.distance(s.units.a1.hex, s.units.b1.hex), 3, 'two hexes further');
+    T.eq(s.units.b1.hp, 39, 'then the ability dealt its 1 damage');
+  });
+
+  T.test('stopping early still resolves the rest of the ability', function () {
+    let s = pusher();
+    s = Apply.apply(s, legal(s, 'displace_stop')[0]);
+    T.ok(Hex.equals(s.units.b1.hex, H(1, 0)), 'not moved');
+    T.eq(s.units.b1.hp, 39);
+  });
+
+  T.test('choosing a blocked hex is a collision for 2 damage, and the push ends', function () {
+    let s = pusher({ arena: { hexes: { '2,0': { elevation: 1 } } } });
+    const into = legal(s, 'displace').find(function (d) { return d.collide && Hex.equals(d.to, H(2, 0)); });
+    T.ok(into, 'the higher hex is offered as a collision');
+    s = Apply.apply(s, into);
+    T.notOk(s.pending, 'the push ended');
+    T.ok(Hex.equals(s.units.b1.hex, H(1, 0)), 'the target stayed put');
+    T.eq(s.units.b1.hp, 40 - 2 - 1, 'collision damage, then the ability damage');
+  });
+
+  T.test('a pull never moves onto the source and goes strictly closer', function () {
+    const s = setup([F.unit('a1', 'u02', 0, H(0, 0), { tl: 1 }), F.unit('b1', 'u06', 1, H(3, 0), { tl: 5, hp: 40 })]);
+    s.units.a1.abilities = [{ aid: 'pl', timing: 'command', target: 'enemyInRange', range: 3, effects: [{ k: 'pull', n: 2 }] }];
+    const after = Apply.apply(s, { type: 'command', uid: 'a1', aid: 'pl', targetUid: 'b1' });
+    for (const d of legal(after, 'displace')) T.eq(Hex.distance(H(0, 0), d.to), 2);
+  });
+
+  T.test('the AI makes push choices and finishes games with them', function () {
+    for (let seed = 0; seed < 4; seed++) {
+      let s = setup([F.unit('a1', 'u02', 0, H(-2, 0), { tl: 1 }), F.unit('b1', 'u06', 1, H(2, 0), { tl: 2 })], null, { seed: 'push-ai-' + seed });
+      for (const id of ['a1', 'b1']) s.units[id].abilities = [{ aid: 'p' + id, timing: 'command', target: 'adjacentEnemy', effects: [{ k: 'push', n: 2 }, { k: 'damage', n: 1 }] }];
+      const out = AI.playOut(s);
+      T.ok(out.state.over, 'finished');
     }
   });
 });

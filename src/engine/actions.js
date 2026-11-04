@@ -51,7 +51,8 @@ export function actionKey(action) {
   if (action.cid) parts.push(action.cid);
   if (action.area !== undefined) parts.push('a' + action.area);
   if (action.grant !== undefined) parts.push('g' + action.grant);
-  if (action.side !== undefined && (action.type === 'respond' || action.type === 'pass')) parts.push('s' + action.side);
+  if (action.side !== undefined && (action.type === 'respond' || action.type === 'pass' || action.type === 'displace_stop')) parts.push('s' + action.side);
+  if (action.collide) parts.push('x');
   return parts.join('|');
 }
 
