@@ -295,6 +295,9 @@ export function critText(crit) {
   if (crit.damage) parts.push('+' + crit.damage + ' damage');
   if (crit.dice) parts.push('roll ' + crit.dice + ' more ' + (crit.dice === 1 ? 'die' : 'dice'));
   if (crit.status) parts.push(STATUSES[crit.status] || crit.status);
+  if (crit.damagePerCrit) parts.push('+' + crit.damagePerCrit + ' damage per critical' + (crit.max ? ' (up to +' + crit.max + ')' : ''));
+  if (crit.move) parts.push('after damage, move ' + crit.move + (crit.ignoreEngagement ? ' ignoring engagement' : ''));
+  if (crit.repeat) parts.push('after damage, repeat the attack once at no Timeline cost');
   if (!parts.length) return '';
   const joined = parts.length === 1
     ? parts[0]

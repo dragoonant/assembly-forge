@@ -23,7 +23,7 @@
  * or that test will tell you off.
  */
 
-import { STATUSES, WEAPONS, displayName } from './names.js';
+import { STATUSES, UPGRADES, WEAPONS, displayName } from './names.js';
 import { activePack } from './packs.js';
 
 /** Ability names, by the ids in `src/content/units.js`. */
@@ -53,15 +53,35 @@ export const TACTICS = Object.freeze({
  * @returns {string}
  */
 export function tacticsName(cid) {
-  return TACTICS[cid] || cid;
+  const pack = activePack();
+  return (pack && pack.names[cid]) || TACTICS[cid] || cid;
 }
 
 /** How each timing is labelled. */
 export const TIMINGS = Object.freeze({
   command: 'Command',
   ongoing: 'Ongoing',
-  response: 'Response'
+  response: 'Response',
+  attack: 'Attack'
 });
+
+/** When a response card can be played, in the player's terms. */
+const WINDOWS = Object.freeze({
+  beforeRoll: 'before the attack roll',
+  afterRoll: 'after the attack roll',
+  afterDamage: 'after the attack deals damage',
+  wouldBeDefeated: 'when your unit would be defeated'
+});
+
+/** A granted additional action, as a phrase. */
+function grantPhrase(g) {
+  let p;
+  if (g.kind === 'dash') p = 'make an additional Dash at no Timeline cost';
+  else if (g.kind === 'move') p = 'Move ' + g.n + (g.ignoreEngagement ? ', ignoring Engagement' : '');
+  else if (g.kind === 'attack') p = 'make an additional ' + displayName(g.wid) + ' attack at no Timeline cost';
+  else throw new Error('No description for grant "' + g.kind + '".');
+  return g.then ? p + ', then ' + grantPhrase(g.then) : p;
+}
 
 /** What each response event is called, in the second person. */
 const EVENTS = Object.freeze({
@@ -103,6 +123,26 @@ export function effectPhrase(e, timing) {
     case 'extraAttack':
       return 'make ' + (e.n === 1 ? 'an additional attack' : e.n + ' additional attacks') +
         ' at no Timeline cost';
+    case 'weaponStrength':
+      return signed(e.n) + ' strength to ' + displayName(e.wid) + scope +
+        (e.per === 'rescued' ? ' for each garrison you have rescued' : '');
+    case 'grant':       return grantPhrase(e.grant);
+    case 'upgrade':     return 'gain a ' + (UPGRADES[e.s] || e.s);
+    case 'damageSelf':  return 'take ' + e.n + ' damage';
+    case 'stripOnAttack':
+      return 'destroy ' + e.n + (e.n === 1 ? ' upgrade' : ' upgrades') + ' on each target after the attack roll' + scope;
+    case 'critFrom':    return 'attack rolls of ' + e.n + ' or more are critical hits';
+    case 'dashBonus':   return 'Dash moves ' + e.n + (e.n === 1 ? ' more hex' : ' more hexes');
+    case 'strengthVsStatus': return signed(e.n) + ' strength against a target with a status effect';
+    case 'attackStrength': return signed(e.n) + ' strength on this attack';
+    case 'attackDamage': return signed(e.n) + ' damage on this attack';
+    case 'reduceDamage': return 'reduce the damage to your unit by ' + e.n;
+    case 'stripTargetUpgrade': return 'destroy ' + e.n + (e.n === 1 ? ' upgrade' : ' upgrades') + ' on each target';
+    case 'stripAttackerUpgrade': return 'destroy ' + e.n + (e.n === 1 ? ' upgrade' : ' upgrades') + ' on the attacker';
+    case 'damageAttackerAndTargets': return 'deal ' + e.n + ' damage to the attacker and to each target';
+    case 'surviveDefeat':
+      return 'it stays at 1 HP instead' + (e.move ? ', Moves ' + e.move : '') +
+        (e.attackWid ? ', then makes a ' + displayName(e.attackWid) + ' attack at no Timeline cost' : '');
     default:
       throw new Error('No description for effect kind "' + e.k +
         '". Add one here in the same commit as the engine change.');
@@ -134,6 +174,10 @@ export function conditionPhrase(when) {
       parts.push('an ally is within ' + when.alliesInRange.range + ' hexes');
     } else if (k === 'enemyAdjacent') {
       parts.push(when.enemyAdjacent ? 'an enemy is adjacent' : 'no enemy is adjacent');
+    } else if (k === 'rescued') {
+      parts.push('you have rescued ' + when.rescued + ' or more garrisons');
+    } else if (k === 'attackedWith') {
+      parts.push('this unit has attacked with ' + displayName(when.attackedWith) + ' this activation');
     } else {
       throw new Error('No description for condition "' + k +
         '". Add one here in the same commit as the engine change.');
@@ -163,6 +207,16 @@ export function targetPhrase(a) {
  * @returns {string}
  */
 export function abilityText(a) {
+  // An Attack card is a weapon line, generated from its numbers.
+  if (a.timing === 'attack' && a.weapon) {
+    const w = a.weapon;
+    const parts = ['Attack with ' + (displayName(a.cid + 'w') !== a.cid + 'w' ? displayName(a.cid + 'w') : 'a special weapon') +
+      ': ' + w.tlCost + ' Timeline, ' + (w.area ? 'an area of ' + w.area.length + ' hexes' : 'range ' + w.range) + ', ' + w.strength + ' dice'];
+    if (w.strengthPerAlly) parts.push(signed(w.strengthPerAlly.n) + ' strength for each other ally within ' + w.strengthPerAlly.range + ' hexes');
+    for (const e of w.effects || []) parts.push(weaponEffectPhrase(e));
+    if (w.crit) parts.push('critical: ' + critPhrase(w.crit));
+    return capitalise(join(parts)) + '.';
+  }
   const effects = a.effects.map(function (e) { return effectPhrase(e, a.timing); });
   let body = join(effects);
 
@@ -171,11 +225,44 @@ export function abilityText(a) {
 
   const clauses = [];
   if (a.timing === 'response' && a.on) clauses.push(EVENTS[a.on] || 'when triggered');
+  if (a.timing === 'response' && a.window) {
+    clauses.push(WINDOWS[a.window] + (a.role === 'defender' && a.window !== 'wouldBeDefeated' ? ', when your unit is attacked' : a.role === 'attacker' ? ', when your unit attacks' : ''));
+  }
   const cond = conditionPhrase(a.when);
   if (cond) clauses.push(a.timing === 'ongoing' ? 'while ' + cond : 'if ' + cond);
 
   let sentence = clauses.length ? capitalise(join(clauses)) + ', ' + body : capitalise(body);
   return sentence.replace(/\s+/g, ' ').trim() + '.';
+}
+
+/**
+ * A weapon's timed effect, as a phrase.
+ * @param {Object} e
+ * @returns {string}
+ */
+export function weaponEffectPhrase(e) {
+  const when = { beforeRoll: 'before the roll', afterRoll: 'after the roll', afterDamage: 'after damage' }[e.when] || '';
+  switch (e.k) {
+    case 'pull': return when + ', pull the target ' + e.n + (e.n === 1 ? ' hex' : ' hexes');
+    case 'push': return when + ', push the target ' + e.n + (e.n === 1 ? ' hex' : ' hexes');
+    case 'shieldsOff': return when + ", switch off the target's shields";
+    case 'captureNear': return when + ', capture an objective the target is on or next to';
+    case 'stripUpgrade': return when + ', destroy ' + (e.n || 1) + ' upgrade on the target';
+    case 'grantDash': return when + ', make an additional Dash at no Timeline cost';
+    default: throw new Error('No description for weapon effect "' + e.k + '".');
+  }
+}
+
+/** A critical effect as a phrase, covering the fields names.js critText does not. */
+function critPhrase(c) {
+  const parts = [];
+  if (c.damage) parts.push('+' + c.damage + ' damage');
+  if (c.damagePerCrit) parts.push('+' + c.damagePerCrit + ' damage per critical' + (c.max ? ' (up to +' + c.max + ')' : ''));
+  if (c.dice) parts.push('roll ' + c.dice + ' more ' + (c.dice === 1 ? 'die' : 'dice'));
+  if (c.status) parts.push('apply ' + (STATUSES[c.status] || c.status));
+  if (c.move) parts.push('after damage, Move ' + c.move + (c.ignoreEngagement ? ', ignoring Engagement' : ''));
+  if (c.repeat) parts.push('after damage, repeat the attack at no Timeline cost (the repeat cannot do this again)');
+  return join(parts);
 }
 
 /**

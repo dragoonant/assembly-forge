@@ -13,6 +13,7 @@
  */
 
 import * as Actions from './actions.js';
+import * as Attack from './attack.js';
 import * as Combat from './combat.js';
 import * as Effects from './effects.js';
 import * as Hex from './hex.js';
@@ -36,6 +37,13 @@ export function apply(state, action) {
   const next = State.clone(state);
   const act = next.activation;
 
+  // Decisions on a paused attack: a response card, a pass, or a reacting unit's move or attack.
+  if (canonical.type === 'respond' || canonical.type === 'pass' || canonical.type === 'react_move' || canonical.type === 'react_attack') {
+    Attack.decide(next, canonical);
+    afterAttackSettles(next);
+    return next;
+  }
+
   switch (canonical.type) {
     case 'advance':
       if (canonical.slowed) {
@@ -52,9 +60,19 @@ export function apply(state, action) {
 
     case 'dash':
       moveUnit(next, canonical, 'dash');
-      act.slots.primary = 'dash';
+      if (canonical.grant !== undefined) {
+        useGrant(act, canonical.grant);
+      } else {
+        act.slots.primary = 'dash';
+        spendTimeline(next, act.uid, next.rules.actions.dash.tlCost);
+      }
       Effects.raise(next, act.uid, 'dash', Combat);
-      spendTimeline(next, act.uid, next.rules.actions.dash.tlCost);
+      break;
+
+    case 'move':
+      // a granted Move: ordinary movement, no Timeline, separate from the Advance
+      moveUnit(next, canonical, 'move');
+      useGrant(act, canonical.grant);
       break;
 
     case 'energize': {
@@ -68,29 +86,25 @@ export function apply(state, action) {
     }
 
     case 'attack': {
-      // Read the Timeline cost off the weapon BEFORE resolving, because the
-      // attack's own critical effects are allowed to modify the weapon.
+      // Timeline is paid when the attack is declared, before anything resolves (rulebook 2026-10-30, step 3).
       const w = Combat.weapon(State.unit(next, act.uid), canonical.wid);
       const free = Boolean(canonical.free);
-      const tlCost = free ? 0 : w.tlCost;
-
-      const outcome = Combat.resolveAttack(next, act.uid, canonical.wid, canonical.target);
-
-      if (free) {
-        // Granted by an ability, explicitly "at TL0" -- it neither consumes
-        // the Primary Action nor advances the Timeline.
+      if (canonical.grant !== undefined) {
+        useGrant(act, canonical.grant);
+      } else if (free) {
+        // granted by an ability, at no Timeline cost: it does not use up the Primary Action
         act.extraAttacks -= 1;
       } else {
         act.slots.primary = 'attack';
         closeMovementBlock(next);
+        spendTimeline(next, act.uid, w.tlCost);
       }
-
-      if (canonical.target.kind === 'unit' && outcome.damage > 0 && !outcome.destroyed) {
-        Effects.raise(next, canonical.target.id, 'damaged', Combat);
-      }
-      if (outcome.destroyed) Effects.raise(next, act.uid, 'destroy', Combat);
-
-      spendTimeline(next, act.uid, tlCost);
+      Attack.start(next, {
+        uid: act.uid, weapon: w,
+        targets: canonical.targets || [canonical.target],
+        areaHexes: canonical.areaHexes || null
+      });
+      afterAttackSettles(next);
       break;
     }
 
@@ -109,6 +123,23 @@ export function apply(state, action) {
       if (idx === -1) throw new Error('Tactics card not in hand: ' + canonical.cid);
       const c = hand.splice(idx, 1)[0];
       next.players[act.side].tactics.discard.push(c);
+      if (c.timing === 'attack') {
+        // an Attack card replaces the Primary Attack and pays its own weapon's Timeline
+        act.slots.tactics = true;
+        act.tacticsBy[act.side] = true;
+        act.slots.primary = 'attack';
+        closeMovementBlock(next);
+        spendTimeline(next, act.uid, c.weapon.tlCost);
+        next.log.push({ t: 'tactics', cid: c.cid, uid: act.uid, side: act.side, notice: true });
+        Attack.start(next, {
+          uid: act.uid, weapon: Actions.cardWeapon(c),
+          targets: canonical.targets || [canonical.target],
+          areaHexes: canonical.areaHexes || null, viaCard: c.cid
+        });
+        afterAttackSettles(next);
+        break;
+      }
+      act.tacticsBy[act.side] = true;
       Effects.resolve(next, act.uid, c, canonical.targetUid || null, Combat);
       act.slots.tactics = true;
       // A card played in response to an opponent's attack locks the player out
@@ -126,6 +157,7 @@ export function apply(state, action) {
       const g = next.garrisons[canonical.gid];
       g.alive = false;
       next.players[act.side].vp += next.rules.scoring.garrisonRescueVp;
+      next.players[act.side].rescued = (next.players[act.side].rescued || 0) + 1;
       act.slots.primary = 'rescue';
       closeMovementBlock(next);
       next.log.push({
@@ -217,6 +249,26 @@ export function collectPickup(state, u) {
   if (p.kind === 'energy') u.energy += 1;
   else u.upgrades.push(p.upgrade);
   state.log.push({ t: 'pickup', uid: u.uid, pid: p.pid, kind: p.kind, upgrade: p.upgrade, sound: 'pickup', notice: true });
+}
+
+/**
+ * Spend a granted action. A grant with `then` opens its follow-up as it is used.
+ * @param {Object} act
+ * @param {number} i
+ */
+function useGrant(act, i) {
+  const g = act.grants.splice(i, 1)[0];
+  if (g && g.then) act.grants.push(g.then);
+}
+
+/**
+ * After any step of an attack: if the attack has finished (nothing paused, nothing left on the stack) and the
+ * activating unit was defeated during it, nothing else is left to do but end the activation; legalActions handles that.
+ * @param {Object} state
+ */
+function afterAttackSettles(state) {
+  if (state.pending || (state.attacks && state.attacks.length)) return;
+  state.attacks = [];
 }
 
 /**

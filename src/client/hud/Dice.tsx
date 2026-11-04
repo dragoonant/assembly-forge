@@ -1,7 +1,7 @@
 // The dice panel. The engine has already rolled: the panel tumbles for a moment and then lands on the faces that exist,
 // so the board updates with the damage when the player continues. The opponent's dice roll and close by themselves.
 import { useEffect, useState } from 'react'
-import { Names } from '../engine'
+import { displayName, Names } from '../engine'
 import { closeDice } from '../game'
 import { useGame } from '../store'
 
@@ -16,6 +16,7 @@ function isHit(face: number, shift: number, accuracy: number, critFrom: number):
 export function Dice() {
   const dice = useGame((s) => s.dice)
   const rules = useGame((s) => s.game?.rules)
+  const game = useGame((s) => s.game)
   const [phase, setPhase] = useState<'ready' | 'spin' | 'done'>('ready')
   const [tick, setTick] = useState(0)
 
@@ -74,7 +75,18 @@ export function Dice() {
             <strong>{o.hits}</strong> hit{o.hits === 1 ? '' : 's'}
             {o.crits > 0 && <> · <strong>{o.crits}</strong> critical{o.crits === 1 ? '' : 's'}</>}
             {o.absorbed > 0 && <> · {o.absorbed} absorbed</>}
-            <div className="dice-damage">{o.damage > 0 ? o.damage + ' damage' : 'No damage'}{o.destroyed ? ' — destroyed' : ''}</div>
+            {o.results && o.results.length > 1 ? (
+              <div className="dice-damage multi">
+                {o.results.map((r: { ref: { id: string }; damage: number; destroyed: boolean }, i: number) => (
+                  <div key={i}>
+                    {game && game.units[r.ref.id] ? displayName(game.units[r.ref.id]!.defId) : 'Garrison'}: {r.damage > 0 ? r.damage + ' damage' : 'no damage'}
+                    {r.destroyed ? ' — destroyed' : ''}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="dice-damage">{o.damage > 0 ? o.damage + ' damage' : 'No damage'}{o.destroyed ? ' — destroyed' : ''}</div>
+            )}
             {o.status && <div>{Names.STATUSES[o.status] ?? o.status} applied</div>}
           </div>
         )}

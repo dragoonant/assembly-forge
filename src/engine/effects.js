@@ -44,7 +44,10 @@ import * as State from './state.js';
 
 /** Effect kinds the engine resolves. Anything else is a bug, not a no-op. */
 export const EFFECT_KINDS = Object.freeze([
-  'strength', 'accuracy', 'move', 'energy', 'damage', 'status', 'heal', 'extraAttack', 'push', 'pull'
+  'strength', 'accuracy', 'move', 'energy', 'damage', 'status', 'heal', 'extraAttack', 'push', 'pull',
+  'weaponStrength', 'grant', 'upgrade', 'damageSelf', 'stripOnAttack',
+  // ongoing-only kinds, read where they apply rather than resolved
+  'critFrom', 'dashBonus', 'strengthVsStatus'
 ]);
 
 /** Response events the engine raises. */
@@ -91,6 +94,13 @@ export function conditionHolds(state, u, when) {
 
   if (when.damageTaken !== undefined) {
     if (u.maxHp - u.hp < when.damageTaken) return false;
+  }
+  if (when.rescued !== undefined) {
+    if ((state.players[u.side].rescued || 0) < when.rescued) return false;
+  }
+  if (when.attackedWith !== undefined) {
+    const act = state.activation;
+    if (!act || act.uid !== u.uid || (act.attacked || []).indexOf(when.attackedWith) === -1) return false;
   }
   if (when.objectives !== undefined) {
     let held = 0;
@@ -226,6 +236,7 @@ export function resolve(state, uid, a, targetUid, combat) {
 
   for (let i = 0; i < a.effects.length; i++) {
     const e = a.effects[i];
+    if (!u.alive && e.k !== 'energy') break;
     switch (e.k) {
       case 'strength':
       case 'accuracy':
@@ -280,6 +291,46 @@ export function resolve(state, uid, a, targetUid, combat) {
       case 'push':
       case 'pull':
         if (targetUid && displace(state, u, targetUid, e.n, e.k, combat)) applied.push(e.k);
+        break;
+
+      case 'weaponStrength':
+        // +n strength for one named weapon this activation, optionally per Garrison this player has Rescued
+        if (state.activation && state.activation.uid === uid) {
+          const per = e.per === 'rescued' ? (state.players[u.side].rescued || 0) : 1;
+          state.activation.weaponMods[e.wid] = (state.activation.weaponMods[e.wid] || 0) + e.n * per;
+          applied.push('weaponStrength');
+        }
+        break;
+
+      case 'grant':
+        if (state.activation && state.activation.uid === uid) {
+          state.activation.grants.push(JSON.parse(JSON.stringify(e.grant)));
+          applied.push('grant');
+        }
+        break;
+
+      case 'upgrade':
+        u.upgrades.push(e.s);
+        state.log.push({ t: 'pickup', uid: uid, kind: 'upgrade', upgrade: e.s, notice: true });
+        applied.push('upgrade');
+        break;
+
+      case 'damageSelf':
+        combat.dealDamage(state, { kind: 'unit', id: uid }, e.n, u.side === 0 ? 1 : 0, false);
+        applied.push('damageSelf');
+        break;
+
+      case 'stripOnAttack':
+        if (state.activation && state.activation.uid === uid) {
+          state.activation.mods.stripOnAttack = (state.activation.mods.stripOnAttack || 0) + e.n;
+          applied.push('stripOnAttack');
+        }
+        break;
+
+      case 'critFrom':
+      case 'dashBonus':
+      case 'strengthVsStatus':
+        // ongoing kinds: read by combat and movement while their condition holds
         break;
 
       default:

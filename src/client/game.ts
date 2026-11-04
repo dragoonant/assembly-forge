@@ -2,7 +2,7 @@
 // `perform`: apply it with the engine, play the blocking animation beats (a walk, a deploy, a shot), show the dice for an
 // attack, then commit the new state and start the effects (bursts, wrecks, labels, banners). The board therefore never
 // jumps to a result before the motion that caused it, and damage lands with the dice (the 2D game's rule, kept).
-import { apply, displayName, isTerminal, newSkirmish, teamOrder, aiChoose, type Action, type GameState } from './engine'
+import { apply, deciderSide, displayName, isTerminal, newSkirmish, teamOrder, aiChoose, type Action, type GameState } from './engine'
 import { music } from './audio/sound'
 import { clearEffects, runBeats, runEffects, SPEED_FACTOR } from './presentation/director'
 import { newEntries, plan } from './presentation/plan'
@@ -69,7 +69,9 @@ export function deploy(seed?: string): void {
 /** Is it a human's turn right now? */
 export function humanTurn(): boolean {
   const { game, ai, busy } = getStore()
-  return Boolean(game && game.activation && !ai[game.activation.side] && !busy && !isTerminal(game))
+  if (!game || !game.activation || busy || isTerminal(game)) return false
+  const d = deciderSide(game)
+  return d !== null && !ai[d]
 }
 
 function lastAttack(s: GameState) {
@@ -105,10 +107,12 @@ async function perform(action: Action, byAI: boolean): Promise<number> {
   const game = getStore().game!
   const mine = epoch
   const next = apply(game, action)
-  const p = plan(game, next, newEntries(game, next))
+  const entries = newEntries(game, next)
+  const p = plan(game, next, entries)
   setStore({ busy: true, armed: null })
   await runBeats(p.beats)
-  if (action.type === 'attack') await showDice(next, byAI)
+  // dice whenever this step completed an attack, whatever kind of action finished it (a response, a pass)
+  if (entries.some((e) => e.t === 'attack')) await showDice(next, byAI)
   if (mine !== epoch) return 0
   commit(next)
   return runEffects(p.effects, next, p.settle)
@@ -131,7 +135,8 @@ export function maybeRunAI(): void {
   const tick = (): void => {
     const { game, ai } = getStore()
     if (mine !== epoch) return
-    if (!game || isTerminal(game) || !game.activation || !ai[game.activation.side]) {
+    const d = game ? deciderSide(game) : null
+    if (!game || isTerminal(game) || !game.activation || d === null || !ai[d]) {
       setStore({ busy: false })
       return
     }
@@ -147,7 +152,8 @@ export function maybeRunAI(): void {
     })
   }
   const { game, ai, speed } = getStore()
-  if (game && game.activation && ai[game.activation.side] && !isTerminal(game)) {
+  const d = game ? deciderSide(game) : null
+  if (game && game.activation && d !== null && ai[d] && !isTerminal(game)) {
     setStore({ busy: true })
     aiTimer = setTimeout(tick, STEP_MS[speed] * (SPEED_FACTOR[speed] > 0 ? 1 : 0))
   }

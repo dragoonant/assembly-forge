@@ -15,6 +15,7 @@ import './effects-suite.js';
 import './content-suite.js';
 import './deploy-suite.js';
 import './movement-extras-suite.js';
+import './mechanics-suite.js';
 import './pack-suite.js';
 import './ai-suite.js';
 

@@ -20,6 +20,8 @@
  * modifiers say.
  */
 
+import * as Attack from './attack.js';
+import * as Actions from './actions.js';
 import * as Effects from './effects.js';
 import * as Hex from './hex.js';
 import * as Los from './los.js';
@@ -186,15 +188,76 @@ export function accuracyShift(state, attacker, w, tHex, extra) {
  * @param {number} [extra]
  * @returns {number}
  */
-export function strengthOf(state, attacker, w, extra) {
+export function strengthOf(state, attacker, w, extra, targets) {
   let s = w.strength;
   s += State.upgradeCount(attacker, 'strength');
   s += Effects.ongoingModifier(state, attacker, 'strength');
   if (state.activation && state.activation.uid === attacker.uid) {
     s += state.activation.mods.strength;
+    // weapon-specific bonuses for this activation (an ability that boosts one named weapon)
+    const wm = state.activation.weaponMods && state.activation.weaponMods[w.wid];
+    if (wm) s += wm;
+  }
+  // a weapon that grows with nearby allies: +n per other ally within a range
+  if (w.strengthPerAlly && attacker.hex) {
+    let n = 0;
+    for (const o of State.livingUnits(state, attacker.side)) {
+      if (o.uid !== attacker.uid && o.hex && Hex.distance(o.hex, attacker.hex) <= w.strengthPerAlly.range) n++;
+    }
+    s += n * w.strengthPerAlly.n;
+  }
+  // a bonus against targets carrying a status; with several targets it applies if any one qualifies
+  const vsStatus = Effects.ongoingModifier(state, attacker, 'strengthVsStatus');
+  if (vsStatus && targets && targets.some(function (r) { return r.kind === 'unit' && state.units[r.id] && state.units[r.id].statuses.length > 0; })) {
+    s += vsStatus;
   }
   if (extra) s += extra;
   return Math.max(0, s);
+}
+
+/**
+ * The lowest die face that counts as a critical for this attacker: the rules' default, or lower with an ongoing
+ * ability that widens it (a unit whose 7s and 8s crit).
+ * @param {Object} state
+ * @param {Object} attacker
+ * @returns {number}
+ */
+export function critFromFor(state, attacker) {
+  let c = state.rules.combat.critFrom;
+  for (const a of Effects.abilitiesOf(attacker)) {
+    if (a.timing !== 'ongoing' || !Effects.conditionHolds(state, attacker, a.when)) continue;
+    for (const e of a.effects) if (e.k === 'critFrom' && e.n < c) c = e.n;
+  }
+  return c;
+}
+
+/**
+ * What damage a unit would actually take from `hits`, after Shields and Fracture, without changing anything.
+ * @param {Object} state
+ * @param {Object} u
+ * @param {number} hits
+ * @param {boolean} combatDamage
+ * @returns {number}
+ */
+export function previewDamage(state, u, hits, combatDamage) {
+  let damage = hits;
+  const ready = State.upgradeCount(u, 'shield') * state.rules.upgrades.shieldAbsorb - (u.shieldSpent | 0);
+  if (ready > 0 && damage > 0) damage -= Math.min(ready, damage);
+  if (combatDamage && u.statuses.indexOf('fracture') !== -1 && damage >= state.rules.statuses.fractureThreshold) {
+    damage += state.rules.statuses.fractureBonus;
+  }
+  return damage;
+}
+
+/**
+ * Where a unit reacting outside its own activation may Move: an ordinary move of `n` hexes.
+ * @param {Object} state
+ * @param {string} uid
+ * @param {number} n
+ * @returns {Array<Object>}
+ */
+export function reactMoves(state, uid, n) {
+  return Actions.movementOptions(state, uid, n);
 }
 
 /**
@@ -258,9 +321,9 @@ export function rollAttack(rngState, rules, count, shift, disarmed) {
  * @param {Object} combatRules
  * @returns {boolean}
  */
-export function isHit(face, shift, combatRules) {
+export function isHit(face, shift, combatRules, critFrom) {
   if (face === combatRules.naturalMiss) return false;
-  if (face >= combatRules.critFrom) return true;
+  if (face >= (critFrom || combatRules.critFrom)) return true;
   return face + shift >= combatRules.defaultAccuracy;
 }
 
@@ -309,75 +372,14 @@ export function critChance(rules, count) {
  * @param {{strength?: number, accuracy?: number}} [extra] one-off modifiers
  * @returns {Object} a summary, also pushed onto the log
  */
-export function resolveAttack(state, uid, wid, ref, extra) {
+export function resolveAttack(state, uid, wid, ref) {
   const attacker = State.unit(state, uid);
   const w = weapon(attacker, wid);
   if (!w) throw new Error('Unit ' + uid + ' has no weapon ' + wid);
-
-  const tHex = targetHex(state, ref);
-  if (!tHex) throw new Error('Attack on a target that is not on the board: ' + ref.id);
-
-  const bonus = extra || {};
-  const shift = accuracyShift(state, attacker, w, tHex, bonus.accuracy);
-  const dice = strengthOf(state, attacker, w, bonus.strength);
-  const disarmed = attacker.statuses.indexOf('disarm') !== -1;
-
-  const rolled = rollAttack(state.rng, state.rules, dice, shift, disarmed);
-  state.rng = rolled.state;
-  // Disarm lasts for one attack: rerolled hits and no crit effects, then it is removed
-  // (rulebook 2026-10-30, "Disarm").
-  if (disarmed) attacker.statuses.splice(attacker.statuses.indexOf('disarm'), 1);
-
-  const outcome = {
-    t: 'attack',
-    uid: uid,
-    wid: wid,
-    target: ref,
-    dice: dice,
-    shift: shift,
-    rolls: rolled.rolls,
-    rerolls: rolled.rerolls,
-    hits: rolled.hits,
-    crits: rolled.crits,
-    disarmed: disarmed,
-    damage: 0,
-    destroyed: false,
-    sound: rolled.hits > 0 ? 'hit' : 'miss'
-  };
-
-  // Criticals fire ONCE per attack however many were rolled, which is the
-  // published rule. Extra dice resolve before damage so they can contribute
-  // hits; the flat bonus and the status are applied after.
-  let hits = rolled.hits;
-  let critDamage = 0;
-  if (rolled.crits > 0 && w.crit) {
-    outcome.critFired = true;
-    if (w.crit.dice) {
-      const more = rollAttack(state.rng, state.rules, w.crit.dice, shift, disarmed);
-      state.rng = more.state;
-      hits += more.hits;
-      outcome.critRolls = more.rolls;
-    }
-    if (w.crit.damage) critDamage += w.crit.damage;
-  }
-
-  if (hits > 0) {
-    const dealt = dealDamage(state, ref, hits + critDamage, attacker.side, true);
-    outcome.hits = hits;
-    outcome.damage = dealt.damage;
-    outcome.destroyed = dealt.destroyed;
-    if (dealt.destroyed) outcome.sound = 'destroy';
-    if (dealt.absorbed) outcome.absorbed = dealt.absorbed;
-    if (dealt.fractured) outcome.fractured = true;
-
-    // A status only sticks to something still standing.
-    if (rolled.crits > 0 && w.crit && w.crit.status && !dealt.destroyed && ref.kind === 'unit') {
-      if (applyStatus(state, ref.id, w.crit.status)) outcome.status = w.crit.status;
-    }
-  }
-
-  state.log.push(outcome);
-  return outcome;
+  Attack.start(state, { uid: uid, weapon: w, targets: [ref] });
+  // with no response cards in play the sequence never pauses; if it does, the caller must resolve the decision
+  for (let i = state.log.length - 1; i >= 0; i--) if (state.log[i].t === 'attack') return state.log[i];
+  return null;
 }
 
 /**
@@ -416,7 +418,7 @@ export function applyStatus(state, uid, status) {
  * @param {0|1} bySide
  * @returns {{damage: number, destroyed: boolean, absorbed?: number, fractured?: boolean}}
  */
-export function dealDamage(state, ref, hits, bySide, combat) {
+export function dealDamage(state, ref, hits, bySide, combat, opts) {
   if (ref.kind === 'garrison') {
     const g = state.garrisons[ref.id];
     if (!g || !g.alive) return { damage: 0, destroyed: false };
@@ -455,6 +457,11 @@ export function dealDamage(state, ref, hits, bySide, combat) {
   }
 
   u.hp -= damage;
+  // a response that keeps a unit standing at 1 HP instead of being defeated
+  if (opts && opts.floorHp && u.hp < opts.floorHp) {
+    u.hp = opts.floorHp;
+    state.log.push({ t: 'survived', uid: u.uid, notice: true });
+  }
 
   if (u.hp <= 0) {
     u.hp = 0;
@@ -542,3 +549,9 @@ export function refreshShield(state, uid) {
   const u = state.units[uid];
   if (u) u.shieldSpent = false;
 }
+
+Attack.bindCombat({
+  targetHex: targetHex, strengthOf: strengthOf, accuracyShift: accuracyShift, isHit: isHit, critFromFor: critFromFor,
+  previewDamage: previewDamage, dealDamage: dealDamage, applyStatus: applyStatus, weapon: weapon,
+  targetsFor: targetsFor, reactMoves: reactMoves
+});

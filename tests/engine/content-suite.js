@@ -107,7 +107,15 @@ T.suite('content text', function () {
       heal: { k: 'heal', n: 1 },
       extraAttack: { k: 'extraAttack', n: 1 },
       push: { k: 'push', n: 2 },
-      pull: { k: 'pull', n: 1 }
+      pull: { k: 'pull', n: 1 },
+      weaponStrength: { k: 'weaponStrength', n: 1, wid: 'u01b', per: 'rescued' },
+      grant: { k: 'grant', grant: { kind: 'dash', then: { kind: 'attack', wid: 'u02a' } } },
+      upgrade: { k: 'upgrade', s: 'shield' },
+      damageSelf: { k: 'damageSelf', n: 3 },
+      stripOnAttack: { k: 'stripOnAttack', n: 1 },
+      critFrom: { k: 'critFrom', n: 7 },
+      dashBonus: { k: 'dashBonus', n: 1 },
+      strengthVsStatus: { k: 'strengthVsStatus', n: 2 }
     };
     for (let i = 0; i < Effects.EFFECT_KINDS.length; i++) {
       const kind = Effects.EFFECT_KINDS[i];

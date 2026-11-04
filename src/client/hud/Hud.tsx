@@ -6,6 +6,7 @@ import {
   abilitiesOf,
   ability,
   conditionHolds,
+  deciderSide,
   displayName,
   isEngaged,
   roleName,
@@ -135,12 +136,92 @@ function Track({ game }: { game: GameState }) {
 
 // --- actions -------------------------------------------------------------------------------------------------------------
 
+const WINDOW_LABEL: Record<string, string> = {
+  beforeRoll: 'Before the attack roll',
+  afterRoll: 'After the attack roll',
+  afterDamage: 'After the attack deals damage',
+  wouldBeDefeated: 'Your machine would be destroyed',
+}
+
+/** The prompt while a paused attack waits on this player: response cards, a reacting unit, or nothing to do but pass. */
+function DecisionPanel({ game }: { game: GameState }) {
+  const af = useAffordances()
+  const p = game.pending!
+  const pass = af.legal.find((a) => a.type === 'pass')
+  if (p.kind === 'window') {
+    const cards = af.legal.filter((a) => a.type === 'respond')
+    const hand = game.players[p.side!]!.tactics.hand
+    return (
+      <section className="panel actions decision" data-testid="decision">
+        <div className="panel-head">{WINDOW_LABEL[p.window!] ?? 'Respond'}</div>
+        <RollSoFar game={game} />
+        <p className="hint">Play a response card, or pass.</p>
+        {cards.map((a) => {
+          const c = hand.find((x) => x.cid === a.cid)!
+          return (
+            <button key={a.cid} className="act ability" data-testid={'respond-' + a.cid} onClick={() => take(a)}>
+              <strong>{Text.tacticsName(a.cid)}</strong>
+              <span className="dim">{Text.abilityText(c)}</span>
+            </button>
+          )
+        })}
+        {pass && (
+          <button className="act end" data-testid="act-pass" onClick={() => take(pass)}>
+            <strong>Pass</strong>
+          </button>
+        )}
+      </section>
+    )
+  }
+  const who = p.uid ? displayName(game.units[p.uid]!.defId) : ''
+  return (
+    <section className="panel actions decision" data-testid="decision">
+      <div className="panel-head">{who}</div>
+      <p className="hint">{p.kind === 'react_move' ? 'Still standing: click a glowing hex to move, or pass.' : 'Click an enemy to strike back, or pass.'}</p>
+      {pass && (
+        <button className="act end" data-testid="act-pass" onClick={() => take(pass)}>
+          <strong>Pass</strong>
+        </button>
+      )}
+    </section>
+  )
+}
+
+/** The attack being responded to: who is attacking, and the dice once they have landed. */
+function RollSoFar({ game }: { game: GameState }) {
+  const a = game.attacks && game.attacks[game.attacks.length - 1]
+  if (!a) return null
+  const attacker = game.units[a.uid]
+  return (
+    <div className="hint" data-testid="roll-so-far">
+      {attacker ? displayName(attacker.defId) + ' is attacking' : 'An attack is under way'}
+      {a.faces ? <> · rolled {a.faces.join(' ')}</> : <> · {a.dice || ''} dice to roll</>}
+      {a.preview && a.preview.length > 0 && (
+        <div>
+          {a.preview.map((t, i) => (
+            <span key={i}>{(t.ref.kind === 'unit' ? displayName(game.units[t.ref.id]!.defId) : 'Garrison') + ': ' + t.hits + ' hit' + (t.hits === 1 ? '' : 's')}{i < a.preview!.length - 1 ? ' · ' : ''}</span>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function ActionPanel({ game }: { game: GameState }) {
   const armed = useGame((s) => s.armed)
   const ai = useGame((s) => s.ai)
   const af = useAffordances()
   const act = game.activation
   if (!act) return null
+  if (game.pending) {
+    const d = deciderSide(game)
+    if (d !== null && !ai[d]) return <DecisionPanel game={game} />
+    return (
+      <section className="panel actions" data-testid="actions">
+        <div className="panel-head">{sideName(d ?? act.side)} is responding</div>
+      </section>
+    )
+  }
   const u = game.units[act.uid]!
   const mine = !ai[act.side]
   if (!mine) {
@@ -212,23 +293,34 @@ function ActionPanel({ game }: { game: GameState }) {
 
 function Hand({ game }: { game: GameState }) {
   const ai = useGame((s) => s.ai)
+  const armed = useGame((s) => s.armed)
   const af = useAffordances()
-  const side: Side = ai[0] && !ai[1] ? 1 : 0
+  // the human's hand; in hotseat, the hand of whoever must act now
+  const hotseat = !ai[0] && !ai[1]
+  const d = deciderSide(game)
+  const side: Side = hotseat && d !== null ? d : ai[0] && !ai[1] ? 1 : 0
   if (ai[0] && ai[1]) return null
   const p = game.players[side]!
   return (
     <section className="hand" data-testid="hand">
       <div className="hand-head">
-        Tactics · {p.tactics.hand.length} in hand, {p.tactics.deck.length} in deck
+        {hotseat ? sideName(side) + ' · ' : ''}Tactics · {p.tactics.hand.length} in hand, {p.tactics.deck.length} in deck
       </div>
       <div className="cards">
         {p.tactics.hand.map((c) => {
           const plays = af.legal.filter((a) => a.type === 'tactics' && a.cid === c.cid)
+          const isAttack = c.timing === 'attack'
+          const onClick = () => {
+            if (!plays.length) return
+            // an Attack card arms like a weapon: then click a target on the board
+            if (isAttack) setStore({ armed: armed === 'card:' + c.cid ? null : 'card:' + c.cid })
+            else if (plays.length === 1) take(plays[0]!)
+          }
           return (
-            <div key={c.cid} className={'tcard' + (plays.length ? ' playable' : '')} onClick={() => plays.length === 1 && take(plays[0]!)}>
+            <div key={c.cid} className={'tcard' + (plays.length ? ' playable' : '') + (armed === 'card:' + c.cid ? ' armed' : '')} data-testid={'card-' + c.cid} onClick={onClick}>
               <div className="tcard-name">{Text.tacticsName(c.cid)}</div>
               <div className="tcard-text">{Text.abilityText(c)}</div>
-              {plays.length > 1 && (
+              {!isAttack && plays.length > 1 && (
                 <div className="tcard-targets">
                   {plays.map((a) => (
                     <button key={a.targetUid} onClick={(e) => { e.stopPropagation(); take(a) }}>

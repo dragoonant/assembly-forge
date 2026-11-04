@@ -26,19 +26,27 @@ export function affordances(game: GameState | null, armed: string | null, active
   const shootAt = new Map<string, Action[]>()
   const targetable = new Set<string>()
   for (const a of legal) {
-    if ((a.type === 'advance' || a.type === 'dash') && a.to) {
+    if ((a.type === 'advance' || a.type === 'dash' || a.type === 'move' || a.type === 'react_move') && a.to) {
       const k = hexKey(a.to)
       const have = moveTo.get(k)
-      if (!have || (have.type === 'dash' && a.type === 'advance')) moveTo.set(k, a)
+      // prefer whatever is free: an Advance, a granted Move or Dash, before a Dash that spends the Primary Action
+      const rank = (x: Action) => (x.type === 'dash' && !x.free ? 1 : 0)
+      if (!have || rank(a) < rank(have)) moveTo.set(k, a)
     } else if (a.type === 'deploy' && a.to) {
       deployTo.set(hexKey(a.to), a)
-    } else if (a.type === 'attack' && a.target) {
-      if (armed && a.wid !== armed) continue
-      const h = targetHex(game, a.target)
-      if (!h) continue
-      const k = hexKey(h)
-      shootAt.set(k, [...(shootAt.get(k) ?? []), a])
-      if (a.target.kind === 'unit') targetable.add(a.target.id)
+    } else if ((a.type === 'attack' || a.type === 'react_attack' || (a.type === 'tactics' && a.target)) && a.target) {
+      // armed is a weapon id, or 'card:<cid>' for an Attack card from the hand
+      if (a.type === 'tactics') {
+        if (armed !== 'card:' + a.cid) continue
+      } else if (armed && a.wid !== armed) continue
+      if (a.type === 'react_attack' && armed) continue
+      for (const t of a.targets ?? [a.target]) {
+        const h = targetHex(game, t)
+        if (!h) continue
+        const k = hexKey(h)
+        shootAt.set(k, [...(shootAt.get(k) ?? []), a])
+        if (t.kind === 'unit') targetable.add(t.id)
+      }
     }
   }
   return { legal, moveTo, deployTo, shootAt, targetable }
@@ -49,6 +57,9 @@ export function actionForHex(af: Affordances, key: string, armed: string | null)
   const d = af.deployTo.get(key)
   if (d) return d
   const shots = af.shootAt.get(key)
-  if (armed && shots && shots.length) return shots[0]!
+  // an area weapon may catch this hex from several aims: take the aim that catches the most
+  if (shots && shots.length && (armed || shots[0]!.type === 'react_attack')) {
+    return [...shots].sort((a, b) => (b.targets?.length ?? 1) - (a.targets?.length ?? 1))[0]!
+  }
   return af.moveTo.get(key) ?? null
 }

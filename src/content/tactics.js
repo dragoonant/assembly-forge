@@ -27,6 +27,8 @@
  * @property {Array<Object>} effects
  */
 
+import { activePack } from './packs.js';
+
 export const CARDS = Object.freeze({
   // --- Open to any squad ---------------------------------------------------
   t01: Object.freeze({
@@ -96,6 +98,8 @@ export const POOL = Object.freeze(Object.keys(CARDS));
  * @returns {TacticsCard}
  */
 export function card(cid) {
+  const pack = activePack();
+  if (pack && pack.tactics && pack.tactics[cid]) return pack.tactics[cid];
   const c = CARDS[cid];
   if (!c) throw new Error('No tactics card: ' + cid);
   return c;
@@ -131,6 +135,17 @@ export function allowedFor(c, defs) {
  */
 export function buildDeck(defs, size) {
   const want = size === undefined ? 9 : size;
+  const pack = activePack();
+  if (pack && pack.tactics) {
+    // A pack's deck: every signature card the squad qualifies for, then the pack's open cards in its order.
+    const pool = pack.tacticsOrder || Object.keys(pack.tactics);
+    const picked = pool.filter(function (cid) { return pack.tactics[cid].requires && allowedFor(pack.tactics[cid], defs); });
+    for (const cid of pool) {
+      if (picked.length >= want) break;
+      if (!pack.tactics[cid].requires && picked.indexOf(cid) === -1) picked.push(cid);
+    }
+    return picked.slice(0, want);
+  }
   const eligible = POOL.filter(function (cid) { return allowedFor(card(cid), defs); });
 
   const deck = [];

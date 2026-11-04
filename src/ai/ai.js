@@ -125,7 +125,8 @@ export function chooseAction(state, opts) {
   if (!legal.length) return null;
   if (legal.length === 1) return legal[0];
 
-  const side = state.activation.side;
+  // whoever must decide: the side a paused attack is waiting on, otherwise the activating side
+  const side = state.pending ? legal[0].side : state.activation.side;
   let best = null;
   let bestScore = -Infinity;
   const scored = [];
@@ -161,7 +162,12 @@ export function scoreAction(state, action, side) {
   switch (action.type) {
     case 'attack':   return scoreAttack(state, action, side);
     case 'advance':
-    case 'dash':     return scoreMove(state, action, side);
+    case 'move':
+    case 'react_move':
+    case 'dash':     return action.free && action.type === 'dash' ? scoreMove(state, Object.assign({}, action, { type: 'move' }), side) : scoreMove(state, action, side);
+    case 'react_attack': return scoreAttack(state, Object.assign({}, action, { free: true }), side) + 1;
+    case 'respond':  return scoreResponse(state, action, side);
+    case 'pass':     return 0;
     case 'command':  return scoreCommand(state, action, side);
     case 'tactics':  return scoreTactics(state, action, side);
     case 'rescue':   return scoreRescue(state, action);
@@ -181,7 +187,17 @@ export function scoreAction(state, action, side) {
  */
 export function scoreAttack(state, action, side) {
   const attacker = State.unit(state, action.uid);
-  const w = Combat.weapon(attacker, action.wid);
+  const w = action.weapon || Combat.weapon(attacker, action.wid);
+  if (!w) return -TUNING.wasted;
+  // an area attack is the sum of what it does to each target it catches, priced once
+  if (action.targets && action.targets.length > 1) {
+    let sum = 0;
+    for (const t of action.targets) {
+      const v = scoreAttack(state, Object.assign({}, action, { targets: null, target: t, weapon: w, free: true }), side);
+      if (v > 0) sum += v;
+    }
+    return sum <= 0 ? -TUNING.wasted : sum / (action.free ? 1 : Math.max(TUNING.tempoFloor, w.tlCost));
+  }
   const tHex = Combat.targetHex(state, action.target);
   if (!tHex) return -TUNING.wasted;
 
@@ -225,7 +241,53 @@ export function scoreAttack(state, action, side) {
   }
 
   if (value <= 0) return -TUNING.wasted;
+  // a free attack (granted, or part of a reaction) costs no Timeline, so it is not divided by one
+  if (action.free) return value;
   return value / Math.max(TUNING.tempoFloor, w.tlCost);
+}
+
+/**
+ * A response card, judged on what the paused attack looks like now. Simple and readable rather than clever: play a
+ * card when it changes something that matters, keep it otherwise.
+ *
+ * @param {Object} state
+ * @param {Object} action
+ * @param {0|1} side
+ * @returns {number}
+ */
+/**
+ * What holding a card is worth right now. A card still in hand when the game ends is worth nothing, so the price of
+ * playing one falls as the game runs down: full early in Phase 1, a quarter by the last rounds.
+ * @param {Object} state
+ * @returns {number}
+ */
+export function cardCostNow(state) {
+  const rounds = state.rules.timeline.rounds;
+  const total = state.rules.match.phasesPerGame * rounds;
+  const done = (state.phase - 1) * rounds + state.round;
+  const left = Math.max(0, 1 - done / total);
+  return TUNING.cardCost * (0.25 + 0.75 * left);
+}
+
+export function scoreResponse(state, action, side) {
+  const c = state.players[side].tactics.hand.find(function (x) { return x.cid === action.cid; });
+  const a = state.attacks && state.attacks[state.attacks.length - 1];
+  if (!c) return -TUNING.wasted;
+  let value = 0;
+  for (const e of c.effects) {
+    if (e.k === 'surviveDefeat') value += 40;
+    else if (e.k === 'reduceDamage') {
+      // after the roll the hits are known; before it, assume an average roll
+      const r = a && a.results && a.results.length ? a.results.reduce(function (m, x) { return Math.max(m, x.hits); }, 0) : (a ? a.dice * 0.5 : 0);
+      value += Math.min(e.n, r) * TUNING.damage;
+    } else if (e.k === 'attackStrength') value += e.n * TUNING.damage * 0.6 + (a && a.targets.some(function (r) { return r.kind === 'unit' && state.units[r.id] && state.units[r.id].hp <= (a.dice + e.n) * 0.5; }) ? TUNING.killBonus * 0.3 : 0);
+    else if (e.k === 'attackDamage') value += a && a.results && a.results.some(function (x) { return x.hits > 0; }) ? e.n * TUNING.damage : -1;
+    else if (e.k === 'damageAttackerAndTargets') {
+      const me = a && state.units[a.uid];
+      value += a ? (a.targets.length * e.n - (me && me.hp <= e.n ? 99 : e.n)) * TUNING.damage : -1;
+    } else if (e.k === 'stripTargetUpgrade' || e.k === 'stripAttackerUpgrade') value += 2;
+  }
+  return value - cardCostNow(state);
 }
 
 /**
@@ -387,10 +449,15 @@ export function scoreTactics(state, action, side) {
   let c = null;
   for (let i = 0; i < hand.length; i++) if (hand[i].cid === action.cid) { c = hand[i]; break; }
   if (!c) return -TUNING.wasted;
+  // an Attack card is an attack with the card's weapon, less what the card is worth in hand
+  if (c.timing === 'attack') {
+    const v = scoreAttack(state, Object.assign({}, action, { weapon: Actions.cardWeapon(c) }), side);
+    return v <= 0 ? -TUNING.wasted : v - TUNING.cardCost * 0.3;
+  }
 
   const raw = scoreEffectSet(state, action, c, u);
   if (raw <= 0) return -TUNING.wasted;
-  return raw - TUNING.cardCost;
+  return raw - cardCostNow(state);
 }
 
 /**
@@ -423,6 +490,22 @@ function scoreEffectSet(state, action, a, u) {
         break;
       case 'move':
         value += e.n * 5;
+        break;
+      case 'grant':
+        value += e.grant.kind === 'attack' ? (canAttack ? TUNING.damage * 3 : -TUNING.wasted) : 8;
+        break;
+      case 'weaponStrength':
+        value += canAttack ? e.n * (e.per === 'rescued' ? (state.players[u.side].rescued || 0) : 1) * TUNING.damage * 0.7 : -TUNING.wasted;
+        break;
+      case 'upgrade':
+        // permanent for the rest of the game, so worth more than a one-turn bonus
+        value += 18;
+        break;
+      case 'damageSelf':
+        value -= e.n >= u.hp ? 999 : e.n * TUNING.damage * 0.5;
+        break;
+      case 'stripOnAttack':
+        value += canAttack ? 2 : 0;
         break;
       case 'energy':
         value += 2;
@@ -535,7 +618,7 @@ export function playActivation(state, opts) {
   const uid = s.activation ? s.activation.uid : null;
   let guard = 0;
   while (s.activation && s.activation.uid === uid && !Apply.isTerminal(s)) {
-    if (++guard > 64) throw new Error('AI failed to end an activation');
+    if (++guard > 96) throw new Error('AI failed to end an activation');
     const action = chooseAction(s, opts);
     if (!action) break;
     s = Apply.apply(s, action);

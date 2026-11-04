@@ -303,7 +303,7 @@ T.suite('attacks', function () {
     const after = T.act(g, function (a) { return a.type === 'attack'; });
     const hp = State.unit(after, 'b1').hp;
     T.ok(hp < before, 'the target lost hit points');
-    const entry = after.log[after.log.length - 2];
+    const entry = after.log.filter(function (e) { return e.t === 'attack'; }).pop();
     T.ok(hp === before - entry.damage || entry.destroyed, 'and lost exactly the reported damage');
   });
 

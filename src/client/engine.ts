@@ -111,6 +111,22 @@ export interface LogEntry {
   [k: string]: any
 }
 
+export interface Pending {
+  kind: 'window' | 'react_move' | 'react_attack'
+  window?: string
+  role?: string
+  side?: Side
+  uid?: string
+  wid?: string
+}
+
+export interface AttackInProgress {
+  uid: string
+  dice: number
+  faces: number[] | null
+  preview?: { ref: { kind: string; id: string }; hits: number }[]
+}
+
 export interface GameState {
   board: { hexes: Record<string, EngineCell> }
   units: Record<string, EngineUnit>
@@ -127,6 +143,8 @@ export interface GameState {
   phase: number
   round: number
   activation: Activation | null
+  pending?: Pending | null
+  attacks?: AttackInProgress[]
   over: boolean
   winner: Side | null
   log: LogEntry[]
@@ -147,6 +165,11 @@ export interface Action {
   free?: boolean
   tlCost?: number
   slowed?: boolean
+  side?: Side
+  area?: number
+  areaHexes?: Axial[]
+  targets?: { kind: 'unit' | 'garrison'; id: string }[]
+  grant?: number
 }
 
 const State = StateJs as any
@@ -213,6 +236,15 @@ export const unitAt = (s: GameState, h: Axial): EngineUnit | null => State.unitA
 export const garrisonAt = (s: GameState, h: Axial): Garrison | null => State.garrisonAt(s, h)
 export const terrainKind = (s: GameState, kind: string): any => s.rules.terrain[kind]
 export const isEngaged = (s: GameState, side: Side, h: Axial): boolean => State.isEngaged(s, side, h)
+
+/** Who must act now: the side a paused attack is waiting on, otherwise the activating side. */
+export function deciderSide(s: GameState): Side | null {
+  if (s.pending) {
+    if (s.pending.side !== undefined && s.pending.side !== null) return s.pending.side
+    if (s.pending.uid && s.units[s.pending.uid]) return s.units[s.pending.uid]!.side
+  }
+  return s.activation ? s.activation.side : null
+}
 
 export function displayName(id: string): string {
   return Names.displayName(id)

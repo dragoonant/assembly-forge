@@ -97,6 +97,11 @@ export function blocksAt(state, h, ctx) {
   if (cell.elevation !== ctx.fromElev) return false;
 
   const blockers = state.rules.combat.losBlockers;
+  // Area attacks ignore units and Garrisons for line of sight (rulebook 2026-10-30, "Area of Effect Attacks").
+  if (ctx.ignoreUnits) {
+    const b0 = State.baseAt(state, h);
+    return Boolean(blockers.bases && b0 && b0.side !== ctx.side);
+  }
 
   const u = State.unitAt(state, h);
   if (u && u.uid !== ctx.targetUid) {
@@ -135,7 +140,8 @@ export function trace(state, from, to, opts) {
     side: opts.side,
     fromElev: State.elevationAt(state, from),
     toElev: State.elevationAt(state, to),
-    targetUid: opts.targetUid === undefined ? null : opts.targetUid
+    targetUid: opts.targetUid === undefined ? null : opts.targetUid,
+    ignoreUnits: Boolean(opts.ignoreUnits)
   };
 
   const lines = traces(state, from, to);

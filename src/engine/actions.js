@@ -14,6 +14,7 @@
  * mandatory. `state.activation` records which slots are spent.
  */
 
+import * as Attack from './attack.js';
 import * as Combat from './combat.js';
 import * as Effects from './effects.js';
 import * as Hex from './hex.js';
@@ -48,6 +49,9 @@ export function actionKey(action) {
   if (action.aid) parts.push(action.aid);
   if (action.targetUid) parts.push(action.targetUid);
   if (action.cid) parts.push(action.cid);
+  if (action.area !== undefined) parts.push('a' + action.area);
+  if (action.grant !== undefined) parts.push('g' + action.grant);
+  if (action.side !== undefined && (action.type === 'respond' || action.type === 'pass')) parts.push('s' + action.side);
   return parts.join('|');
 }
 
@@ -60,6 +64,8 @@ export function actionKey(action) {
  */
 export function legalActions(state) {
   if (state.over || !state.activation) return [];
+  // A paused attack (a response window, or a unit reacting) is decided before anything else happens.
+  if (state.pending) return sortActions(Attack.pendingOptions(state));
   const act = state.activation;
   const rules = state.rules;
   const u = State.unit(state, act.uid);
@@ -94,7 +100,7 @@ export function legalActions(state) {
   // Slot B: exactly one Primary Action.
   if (!act.slots.primary) {
     if (!act.movementClosed) {
-      const dashes = movementOptions(state, act.uid, rules.movement.dashHexes);
+      const dashes = movementOptions(state, act.uid, rules.movement.dashHexes + dashBonus(state, u));
       for (let i = 0; i < dashes.length; i++) {
         out.push({
           type: 'dash', uid: u.uid, to: dashes[i].to, path: dashes[i].path, cost: dashes[i].cost
@@ -120,13 +126,34 @@ export function legalActions(state) {
   if (!act.slots.primary || act.extraAttacks > 0) {
     const weapons = Combat.weaponsOf(u);
     for (let i = 0; i < weapons.length; i++) {
-      const targets = Combat.targetsFor(state, u.uid, weapons[i]);
-      for (let j = 0; j < targets.length; j++) {
-        out.push({
-          type: 'attack', uid: u.uid, wid: weapons[i].wid, target: targets[j],
+      for (const opt of attackOptions(state, u, weapons[i])) {
+        out.push(Object.assign({
+          type: 'attack', uid: u.uid, wid: weapons[i].wid,
           tlCost: act.slots.primary ? 0 : weapons[i].tlCost,
           free: Boolean(act.slots.primary)
-        });
+        }, opt));
+      }
+    }
+  }
+
+  // Granted additional actions (rulebook 2026-10-30, "Additional Actions"): each at no Timeline cost, taken once, and
+  // not part of the movement block, so a granted Dash or Move works even after the unit has attacked.
+  for (let gi = 0; gi < (act.grants || []).length; gi++) {
+    const g = act.grants[gi];
+    if (g.kind === 'dash') {
+      for (const m of movementOptions(state, act.uid, rules.movement.dashHexes + dashBonus(state, u))) {
+        out.push({ type: 'dash', uid: u.uid, to: m.to, path: m.path, cost: m.cost, free: true, grant: gi });
+      }
+    } else if (g.kind === 'move') {
+      for (const m of movementOptions(state, act.uid, g.n, { ignoreEngagement: g.ignoreEngagement })) {
+        out.push({ type: 'move', uid: u.uid, to: m.to, path: m.path, cost: m.cost, grant: gi });
+      }
+    } else if (g.kind === 'attack') {
+      const w = Combat.weapon(u, g.wid);
+      if (w) {
+        for (const opt of attackOptions(state, u, w)) {
+          out.push(Object.assign({ type: 'attack', uid: u.uid, wid: w.wid, tlCost: 0, free: true, grant: gi }, opt));
+        }
       }
     }
   }
@@ -155,6 +182,17 @@ export function legalActions(state) {
       if (!Effects.conditionHolds(state, u, c.when)) continue;
       const targets = Effects.targetsFor(state, u, c);
       if (c.target && c.target !== 'self' && !targets.length) continue;
+      if (c.timing === 'attack') {
+        // An Attack card is an attack with its own weapon that takes the place of the Primary Attack.
+        if (act.slots.primary) continue;
+        if (c.requires && c.requires.defId && c.requires.defId !== u.defId) continue;
+        for (const opt of attackOptions(state, u, cardWeapon(c))) {
+          out.push(Object.assign({ type: 'tactics', uid: u.uid, cid: c.cid, tlCost: c.weapon.tlCost }, opt));
+        }
+        continue;
+      }
+      if (c.timing === 'response') continue;
+      if (c.requires && c.requires.defId && c.requires.defId !== u.defId) continue;
       for (let j = 0; j < targets.length; j++) {
         out.push({ type: 'tactics', uid: u.uid, cid: c.cid, targetUid: targets[j] });
       }
@@ -179,6 +217,32 @@ export function legalActions(state) {
   }
 
   return sortActions(out);
+}
+
+/**
+ * The ways a weapon can be used right now: one per target, or for an area weapon one per direction it can be aimed.
+ * @param {Object} state
+ * @param {Object} u
+ * @param {Object} w
+ * @returns {Array<Object>} partial actions carrying `target`, or `area`, `areaHexes` and `targets`
+ */
+export function attackOptions(state, u, w) {
+  if (w.area) {
+    return Attack.areaOptions(state, u, w).map(function (o) {
+      return { area: o.dir, areaHexes: o.hexes, targets: o.targets, target: o.targets[0] };
+    });
+  }
+  return Combat.targetsFor(state, u.uid, w).map(function (t) { return { target: t }; });
+}
+
+/** The weapon an Attack card fires, with a weapon id derived from the card. */
+export function cardWeapon(c) {
+  return Object.assign({ wid: c.cid + 'w', accuracy: 0, ignoreLos: false, crit: null, effects: [] }, c.weapon);
+}
+
+/** Extra hexes on a Dash from an ongoing ability. */
+export function dashBonus(state, u) {
+  return Effects.ongoingModifier(state, u, 'dashBonus');
 }
 
 /**
@@ -334,11 +398,12 @@ export function resolveLegal(state, action) {
  * @param {number} allowance hexes of movement
  * @returns {Array<{to: {q: number, r: number}, path: Array<{q: number, r: number}>, cost: number}>}
  */
-export function movementOptions(state, uid, allowance) {
+export function movementOptions(state, uid, allowance, opts) {
   const u = State.unit(state, uid);
   const rules = state.rules;
   const startKey = Hex.key(u.hex);
-  if (rules.movement.engagementPenalty && State.isEngaged(state, u.side, u.hex)) {
+  const ignoreEngagement = Boolean(opts && opts.ignoreEngagement);
+  if (!ignoreEngagement && rules.movement.engagementPenalty && State.isEngaged(state, u.side, u.hex)) {
     allowance -= rules.movement.engagementPenalty;
   }
   // Water and debris: a move started in them loses a hex. Hover ignores terrain penalties.

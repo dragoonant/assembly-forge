@@ -249,7 +249,10 @@ export function instance(uid, defId, side, hex) {
       return {
         wid: w.wid, tlCost: w.tlCost, range: w.range, strength: w.strength,
         accuracy: w.accuracy || 0, ignoreLos: Boolean(w.ignoreLos),
-        crit: w.crit ? JSON.parse(JSON.stringify(w.crit)) : null
+        crit: w.crit ? JSON.parse(JSON.stringify(w.crit)) : null,
+        effects: w.effects ? JSON.parse(JSON.stringify(w.effects)) : undefined,
+        area: w.area ? JSON.parse(JSON.stringify(w.area)) : undefined,
+        strengthPerAlly: w.strengthPerAlly ? JSON.parse(JSON.stringify(w.strengthPerAlly)) : undefined
       };
     }),
     // Deep-copied for the same reason as weapons: two instances of one

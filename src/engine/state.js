@@ -505,6 +505,8 @@ function emptyPlayer(side) {
     vp: 0,
     /** Set when a Tactics card was played defensively; consumed next activation. */
     tacticsLockout: false,
+    /** Garrisons this player has Rescued, for abilities that scale with it. */
+    rescued: 0,
     tactics: { deck: [], hand: [], discard: [] }
   };
 }
@@ -556,7 +558,11 @@ export function addUnit(state, spec) {
         ignoreLos: Boolean(w.ignoreLos),
         cone: Boolean(w.cone),
         crit: w.crit === undefined ? null : clone(w.crit),
-        effect: w.effect === undefined ? null : clone(w.effect)
+        effect: w.effect === undefined ? null : clone(w.effect),
+        // timed weapon effects, an area pattern, and a per-ally strength bonus (card mechanics; see attack.js)
+        effects: w.effects ? clone(w.effects) : [],
+        area: w.area ? clone(w.area) : null,
+        strengthPerAlly: w.strengthPerAlly ? clone(w.strengthPerAlly) : null
       };
     }),
     abilities: (spec.abilities || []).map(function (a) { return clone(a); }),
@@ -684,6 +690,18 @@ export function beginActivation(state, uid, side) {
     mods: { strength: 0, accuracy: 0, move: 0 },
     /** Attacks granted beyond the one Primary Action, at no Timeline cost. */
     extraAttacks: 0,
+    /**
+     * Additional actions granted by abilities and cards, each taken once and at no Timeline cost (rulebook 2026-10-30,
+     * "Additional Actions"): `{kind: 'dash'}`, `{kind: 'move', n, ignoreEngagement}`, `{kind: 'attack', wid}`. A grant
+     * may carry `then`, a grant that opens once it is used ("an extra Dash, then an extra attack").
+     */
+    grants: [],
+    /** Bonus strength for one named weapon this activation, by weapon id. */
+    weaponMods: {},
+    /** Weapon ids this unit has attacked with this activation, in order. */
+    attacked: [],
+    /** Which players have played a Tactics card during this activation (one each). */
+    tacticsBy: {},
     /** Command abilities already used this activation, by id. Once each. */
     commandsUsed: []
   };

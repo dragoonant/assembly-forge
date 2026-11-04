@@ -42,6 +42,7 @@ export function plan(prev: GameState, next: GameState, entries: LogEntry[]): Pla
   for (const e of entries) {
     switch (e.t) {
       case 'advance':
+      case 'move':
       case 'dash': {
         const path: Axial[] = e.path && e.path.length > 1 ? e.path : [e.from, e.to]
         beats.push({ kind: 'move', uid: e.uid, path, dur: WALK_S_PER_HEX * (path.length - 1) })

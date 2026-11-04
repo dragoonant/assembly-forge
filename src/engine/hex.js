@@ -309,6 +309,28 @@ export function corners(size) {
 }
 
 /**
+ * Rotate an axial offset about the origin by 60-degree steps (anticlockwise in DIRECTIONS order), so DIRECTIONS[0]
+ * rotated by k is DIRECTIONS[k]. Used to aim an area weapon's pattern in any of the six directions.
+ * @param {Hex} h
+ * @param {number} steps
+ * @returns {Hex}
+ */
+export function rotate(h, steps) {
+  let x = h.q;
+  let z = h.r;
+  let y = -x - z;
+  const n = ((steps % 6) + 6) % 6;
+  for (let i = 0; i < n; i++) {
+    // cube rotation by 60 degrees anticlockwise: (x, y, z) -> (-y, -z, -x), checked against DIRECTIONS in the tests
+    const nx = -y;
+    const ny = -z;
+    const nz = -x;
+    x = nx; y = ny; z = nz;
+  }
+  return { q: x + 0, r: z + 0 };
+}
+
+/**
  * Offset (column, row) to axial, pointy-top **odd-r**: odd rows shift right.
  * Scenario maps are authored as rectangles, so this is how they land on the
  * axial grid.

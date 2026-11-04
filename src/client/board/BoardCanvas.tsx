@@ -312,8 +312,8 @@ function Scene() {
             targetable={af.targetable.has(u.uid)}
             onClick={() => {
               if (!isTap()) return
-              const shots = af.shootAt.get(hexKey(u.hex!))
-              if (armed && shots && shots.length) take(shots[0]!)
+              const a = actionForHex(af, hexKey(u.hex!), armed)
+              if (a && (a.type === 'attack' || a.type === 'react_attack' || a.type === 'tactics')) take(a)
               else setStore({ selected: selected === u.uid ? null : u.uid })
             }}
             onHover={(over) => setStore({ hoverUnit: over ? u.uid : null, hoverHex: over ? u.hex : null })}

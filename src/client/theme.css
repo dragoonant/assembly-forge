@@ -75,6 +75,9 @@ button:disabled { opacity: 0.45; cursor: default; }
 .cards { display: flex; gap: 8px; overflow-x: auto; }
 .tcard { flex: 0 0 170px; min-height: 84px; padding: 6px 8px; border-radius: 6px; background: #1c1f25; border: 1px solid var(--line); opacity: 0.6; }
 .tcard.playable { opacity: 1; border-color: var(--amber); cursor: pointer; }
+.tcard.armed { border-color: var(--bad); box-shadow: 0 0 0 1px var(--bad) inset; }
+.decision { border-color: var(--amber); }
+.dice-damage.multi { font-size: 14px; }
 .tcard-name { font-weight: 700; font-size: 13px; margin-bottom: 2px; }
 .tcard-text { font-size: 12px; color: var(--dim); }
 .tcard-targets { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
