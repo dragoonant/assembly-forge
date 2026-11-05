@@ -15,6 +15,12 @@
 * { box-sizing: border-box; }
 html, body, #root { margin: 0; width: 100%; height: 100%; overflow: hidden; background: var(--deck); color: var(--text); font: 14px/1.35 system-ui, -apple-system, 'Segoe UI', sans-serif; }
 .app { position: relative; width: 100%; height: 100%; }
+/* a game, not a document: a long press on a phone must never select text, pop the iOS callout or flash a tap highlight
+   (tabletop-kb rules.md rule 24). Fields people type in stay selectable. */
+html, body, #root, .app { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+input, textarea, select, [contenteditable='true'] { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
+img, canvas { -webkit-user-drag: none; }
+button { touch-action: manipulation; }
 .app canvas { touch-action: none; display: block; }
 button { font: inherit; color: var(--text); background: #262a31; border: 1px solid var(--line); border-radius: 6px; cursor: pointer; }
 button:disabled { opacity: 0.45; cursor: default; }

@@ -14,7 +14,7 @@ describe('presentation plan', () => {
   it('a deploy is a blocking beat onto the Base', () => {
     const { g, next, dep } = firstDeploy()
     const p = plan(g, next, newEntries(g, next))
-    expect(p.beats).toEqual([{ kind: 'deploy', uid: dep.uid, at: dep.to, dur: 0.55 }])
+    expect(p.beats).toEqual([{ kind: 'deploy', uid: dep.uid, at: dep.to, dur: 0.7 }])
   })
 
   it('a move walks the engine path at about 1.5 hexes a second', () => {

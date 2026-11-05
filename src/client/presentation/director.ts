@@ -13,6 +13,11 @@ export const SPEED_FACTOR: Record<Speed, number> = { normal: 1, fast: 0.4, insta
 export const EFFECT_MS = { burst: 450, wreck: 900, float: 1300, banner: 1500 } as const
 
 let skipCurrent: (() => void) | null = null
+/** Review switch (?slowmo=N): every blocking beat runs N times longer, so an animation can be watched or screenshotted. */
+let slowmo = 1
+export function setSlowmo(n: number): void {
+  slowmo = Number.isFinite(n) && n > 0 ? n : 1
+}
 let nextId = 1
 
 /** Skip the beat now playing, if any. Wired to any click on the page while a beat is running. */
@@ -23,7 +28,7 @@ export function skipBeat(): void {
 function runBeat(b: Beat): Promise<void> {
   const f = SPEED_FACTOR[getStore().speed]
   if (f === 0 || b.dur <= 0) return Promise.resolve()
-  const ms = b.dur * f * 1000
+  const ms = b.dur * f * slowmo * 1000
   setStore({ beat: b, beatStart: performance.now(), beatMs: ms })
   return new Promise((resolve) => {
     const done = (): void => {

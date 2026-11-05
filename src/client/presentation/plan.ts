@@ -56,7 +56,7 @@ export function plan(prev: GameState, next: GameState, entries: LogEntry[]): Pla
         if (e.to) beats.push({ kind: 'move', uid: e.uid, path: [e.from, e.to], dur: 0.3 })
         break
       case 'deploy':
-        beats.push({ kind: 'deploy', uid: e.uid, at: e.to, dur: 0.55 })
+        beats.push({ kind: 'deploy', uid: e.uid, at: e.to, dur: 0.7 })
         effects.push({ kind: 'cue', cue: 'deploy' })
         break
       case 'attack': {

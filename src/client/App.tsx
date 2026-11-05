@@ -11,7 +11,7 @@ import { viewApi } from './board/viewApi'
 import { cellsOf, isTerminal, legalActions, teamOrder, type Action, type GameState } from './engine'
 import { deploy, maybeRunAI, take } from './game'
 import { battleMusic, loadMuted, music } from './audio/sound'
-import { skipBeat } from './presentation/director'
+import { setSlowmo, skipBeat } from './presentation/director'
 import { Dice } from './hud/Dice'
 import { Hud } from './hud/Hud'
 import { Setup } from './hud/Setup'
@@ -44,6 +44,7 @@ function readParams(): void {
   else if (ai === 'none') setStore({ ai: [false, false] })
   const speed = p.get('speed')
   if (speed === 'fast' || speed === 'instant') setStore({ speed: speed as Speed })
+  if (p.has('slowmo')) setSlowmo(Number(p.get('slowmo')))
   const team = p.get('team')
   const foe = p.get('foe')
   const order = teamOrder()
@@ -101,11 +102,20 @@ export function App() {
       else battleMusic(true)
       window.removeEventListener('pointerdown', onFirst)
     }
+    // a long press must not select text or open the context menu (the CSS covers most browsers; this catches the rest)
+    const typing = (t: EventTarget | null): boolean => t instanceof HTMLElement && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))
+    const noSelect = (e: Event): void => {
+      if (!typing(e.target)) e.preventDefault()
+    }
     window.addEventListener('pointerdown', onDown)
     window.addEventListener('pointerdown', onFirst)
+    document.addEventListener('selectstart', noSelect)
+    document.addEventListener('contextmenu', noSelect)
     return () => {
       window.removeEventListener('pointerdown', onDown)
       window.removeEventListener('pointerdown', onFirst)
+      document.removeEventListener('selectstart', noSelect)
+      document.removeEventListener('contextmenu', noSelect)
     }
   }, [])
   return (

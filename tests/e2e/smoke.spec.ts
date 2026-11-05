@@ -43,6 +43,11 @@ test('setup, deploy and move with real clicks on the board', async ({ page }) =>
   await page.screenshot({ path: 'e2e-out/m2-deploy.png' })
   const dep = await page.evaluate(() => window.__game!.legal().find((a) => a.type === 'deploy')!.to!)
   await clickHex(page, dep.q, dep.r)
+  // the machine flies in from behind its Base: catch it in the air
+  await page.waitForTimeout(150)
+  await page.screenshot({ path: 'e2e-out/m2-deploy-fly-1.png' })
+  await page.waitForTimeout(200)
+  await page.screenshot({ path: 'e2e-out/m2-deploy-fly-2.png' })
   // on the Base: moves off it, plus Commands and non-attack cards, but no Primary that would leave it there
   await page.waitForFunction(() => {
     const l = window.__game!.legal()
@@ -125,4 +130,43 @@ test('the HUD fits a phone in landscape, and every panel folds', async ({ page }
   const bar = await page.getByTestId('actions').boundingBox()
   expect(bar!.height).toBeLessThan(44)
   for (const id of ['track', 'feed', 'actions']) await page.getByTestId(id + '-fold').click()
+  // a long press or a triple click must never select the HUD's text
+  expect(await page.evaluate(() => getComputedStyle(document.body).userSelect)).toBe('none')
+  await page.getByTestId('feed').click({ clickCount: 3 })
+  expect(await page.evaluate(() => window.getSelection()?.toString() ?? '')).toBe('')
+})
+
+test('a deploying machine flies in from behind its Base', async ({ page }) => {
+  // slowmo stretches the beat 15 times, so the flight can be caught at three points
+  await page.goto('./?team=t_lance&foe=t_hammer&seed=e2e-fly&auto=1&slowmo=15')
+  await page.waitForFunction(() => window.__game?.state() !== null && !window.__game!.busy() && window.__game!.legal().some((a) => a.type === 'deploy'), null, { timeout: 30_000 })
+  await page.evaluate(() => window.__game!.take(window.__game!.legal().find((a) => a.type === 'deploy')!))
+  for (const i of [1, 2, 3]) {
+    await page.waitForTimeout(1200)
+    await page.screenshot({ path: `e2e-out/deploy-flight-${i}.png` })
+  }
+})
+
+test('a tap on the hex behind a machine reaches that hex', async ({ page }) => {
+  await page.goto('./?team=t_lance&foe=t_hammer&seed=e2e-pick&auto=1&speed=instant')
+  await page.waitForFunction(() => window.__game?.state() !== null && !window.__game!.busy() && window.__game!.legal().some((a) => a.type === 'deploy'), null, { timeout: 30_000 })
+  await page.evaluate(() => window.__game!.take(window.__game!.legal().find((a) => a.type === 'deploy')!))
+  await page.waitForFunction(() => !window.__game!.busy() && window.__game!.legal().some((a) => a.type === 'advance'))
+  await page.waitForTimeout(500)
+  // the Advance hex that sits on screen just above the machine, where its figure is drawn over the tile
+  const pick = await page.evaluate(() => {
+    const g = window.__game!
+    const uid = g.state()!.activation!.uid
+    const at = g.state()!.units[uid]!.hex!
+    const me = g.hexToScreen(at.q, at.r)!
+    const options = g.legal().filter((a) => a.type === 'advance').map((a) => ({ to: a.to!, p: g.hexToScreen(a.to!.q, a.to!.r)! }))
+    const behind = options.filter((o) => o.p.y < me.y - 10).sort((a, b) => Math.abs(a.p.x - me.x) + (me.y - a.p.y) - (Math.abs(b.p.x - me.x) + (me.y - b.p.y)))[0]!
+    return { uid, to: behind.to, x: behind.p.x, y: behind.p.y }
+  })
+  await page.mouse.click(pick.x, pick.y)
+  await page.waitForFunction(([u, q, r]) => {
+    const h = window.__game!.state()!.units[u as string]!.hex
+    return Boolean(h) && h!.q === q && h!.r === r
+  }, [pick.uid, pick.to.q, pick.to.r] as const)
+  await page.screenshot({ path: 'e2e-out/pick-behind.png' })
 })

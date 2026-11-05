@@ -2,7 +2,7 @@
 // (getStore, not a subscription), so a walk animates without re-rendering React sixty times a second.
 import { Html } from '@react-three/drei'
 import { useFrame } from '@react-three/fiber'
-import { useRef, type ReactNode } from 'react'
+import { useMemo, useRef, type ReactNode } from 'react'
 import type { Group, Mesh, MeshBasicMaterial } from 'three'
 import type { Axial } from '../engine'
 import { getStore, useGame } from '../store'
@@ -82,19 +82,53 @@ export function UnitMover({ uid, side, home, worldOf, children }: { uid: string;
   )
 }
 
-/** A machine arriving from Reserve: it drops onto its Base. */
-export function DeployGhost({ defId, side, at, worldOf }: { defId: string; side: 0 | 1; at: Axial; worldOf: WorldOf }) {
+/** How far behind its Base a deploying machine starts, how high, and how wide the cone of directions it may come from. */
+const DEPLOY_FROM = 4.5
+const DEPLOY_HEIGHT = 3.2
+const DEPLOY_SPREAD = (70 * Math.PI) / 180
+
+const wrapAngle = (a: number): number => Math.atan2(Math.sin(a), Math.cos(a))
+
+/**
+ * A machine arriving from Reserve: it flies in fast and low from somewhere behind its Base, heading on toward the enemy's
+ * Base, and settles onto the hex, turning to its standing facing as it lands. The direction is random within a cone behind
+ * the Base (an interface choice, so Math.random is fine).
+ */
+export function DeployGhost({ defId, side, at, toward, worldOf }: { defId: string; side: 0 | 1; at: Axial; toward: [number, number, number] | null; worldOf: WorldOf }) {
   const ref = useRef<Group>(null)
   const home = worldOf(at)
+  const flight = useMemo(() => {
+    // the way ahead, flat: towards the enemy's Base, or the side's facing if there is none
+    let fx = toward ? toward[0] - home[0] : Math.sin(sideFacing(side))
+    let fz = toward ? toward[2] - home[2] : Math.cos(sideFacing(side))
+    const len = Math.hypot(fx, fz) || 1
+    fx /= len
+    fz /= len
+    // come from behind the Base, anywhere within the cone
+    const a = (Math.random() * 2 - 1) * DEPLOY_SPREAD
+    const bx = -(fx * Math.cos(a) - fz * Math.sin(a))
+    const bz = -(fx * Math.sin(a) + fz * Math.cos(a))
+    return {
+      start: [home[0] + bx * DEPLOY_FROM, home[1] + DEPLOY_HEIGHT, home[2] + bz * DEPLOY_FROM] as const,
+      // face along the flight (from the start towards the Base), relative to the side's standing facing
+      yaw: wrapAngle(Math.atan2(-bx, -bz) - sideFacing(side)),
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [at.q, at.r, side])
   useFrame(() => {
     const g = ref.current
     if (!g) return
-    const t = ease(progress())
-    g.position.set(home[0], home[1] + (1 - t) * 2.2, home[2])
-    g.scale.setScalar(0.6 + 0.4 * t)
+    const t = progress()
+    // fast in, easing off for the landing
+    const e = 1 - Math.pow(1 - t, 2)
+    const s = flight.start
+    g.position.set(s[0] + (home[0] - s[0]) * e, home[1] + (s[1] - home[1]) * Math.pow(1 - e, 2), s[2] + (home[2] - s[2]) * e)
+    // nose along the flight, then turn to the standing facing over the last third
+    const turn = clamp01((t - 0.65) / 0.35)
+    g.rotation.y = flight.yaw * (1 - ease(turn))
   })
   return (
-    <group ref={ref} position={home}>
+    <group ref={ref} position={flight.start as unknown as [number, number, number]}>
       <group rotation={[0, sideFacing(side), 0]}>
         <Figure defId={defId} side={side} pose="fly" />
       </group>

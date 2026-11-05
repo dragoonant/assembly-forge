@@ -521,14 +521,25 @@ function Scene() {
   const shooter = beat && beat.kind === 'shot' ? game.units[beat.uid] : null
   const deploying = beat && beat.kind === 'deploy' ? game.units[beat.uid] : null
 
+  // Every tap lands on a hex, never on a figure (figures carry no pointer handlers, so a tall model cannot hide the hex
+  // behind it). A hex with a legal action takes it (a move, a deploy, an attack on whatever stands there); otherwise a
+  // unit's own hex selects that unit, and empty ground clears the selection and any armed weapon.
   const onPick = (cell: Cell) => {
     const a = actionForHex(af, hexKey(cell), armed)
     if (a) {
       take(a)
       return
     }
-    // clicking empty ground cancels a pinned card or an armed weapon
+    const there = unitAt(game, cell)
+    if (there && there.alive) {
+      setStore({ selected: selected === there.uid ? null : there.uid })
+      return
+    }
     setStore({ selected: null, armed: null })
+  }
+  const onHoverHex = (c: Cell | null) => {
+    const there = c ? unitAt(game, c) : null
+    setStore({ hoverHex: c ? { q: c.q, r: c.r } : null, hoverUnit: there && there.alive ? there.uid : null })
   }
 
   const units = Object.values(game.units).filter((u) => u.alive && u.hex)
@@ -540,7 +551,7 @@ function Scene() {
       <fog attach="fog" args={['#3a4450', 22, 55]} />
       <hemisphereLight args={['#e6eef6', '#5a5038', 1.0]} />
       <directionalLight position={[6, 14, 8]} intensity={2.1} castShadow shadow-mapSize={[2048, 2048]} shadow-camera-left={-12} shadow-camera-right={12} shadow-camera-top={12} shadow-camera-bottom={-12} />
-      <HexTiles cells={cells} frame={frame} onPick={onPick} onHover={(c) => setStore({ hoverHex: c ? { q: c.q, r: c.r } : null })} />
+      <HexTiles cells={cells} frame={frame} onPick={onPick} onHover={onHoverHex} />
       {[...af.moveTo.entries()].map(([k, a]) => (
         <HexRing key={'m' + k} at={hexToWorld(a.to!, frame)} y={topAt(game, a.to!)} colour={a.type === 'dash' ? HL.dash : HL.move} />
       ))}
@@ -571,18 +582,23 @@ function Scene() {
             active={game.activation?.uid === u.uid}
             selected={selected === u.uid}
             targetable={af.targetable.has(u.uid)}
-            onClick={() => {
-              if (!isTap()) return
-              const a = actionForHex(af, hexKey(u.hex!), armed)
-              if (a && (a.type === 'attack' || a.type === 'react_attack' || a.type === 'tactics')) take(a)
-              else setStore({ selected: selected === u.uid ? null : u.uid })
-            }}
-            onHover={(over) => setStore({ hoverUnit: over ? u.uid : null, hoverHex: over ? u.hex : null })}
           />
           </UnitMover>
         )
       })}
-      {deploying && beat && beat.kind === 'deploy' && <DeployGhost defId={deploying.defId} side={deploying.side} at={beat.at} worldOf={worldOf} />}
+      {deploying && beat && beat.kind === 'deploy' && (
+        <DeployGhost
+          key={beat.uid + ':' + beat.at.q + ',' + beat.at.r}
+          defId={deploying.defId}
+          side={deploying.side}
+          at={beat.at}
+          toward={(() => {
+            const foe = game.bases.find((b) => b.side !== deploying.side)
+            return foe ? worldOf(foe.hex) : null
+          })()}
+          worldOf={worldOf}
+        />
+      )}
       {shooter?.hex && beat && beat.kind === 'shot' && !beat.melee && <Tracer from={worldOf(shooter.hex)} to={worldOf(beat.to)} />}
       <Effects worldOf={worldOf} phase={game.phase} round={game.round} />
       <LosLine game={game} frame={frame} armed={armed} hover={hoverHex} />

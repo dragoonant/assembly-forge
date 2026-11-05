@@ -5,7 +5,7 @@
 // The base's jobs are done by a ring painted flat on the hex under the machine: the side-colour rim, a pulsing amber ring
 // when it can act, white when its card is pinned, red when it can be attacked right now.
 import { Billboard } from '@react-three/drei'
-import { useFrame, type ThreeEvent } from '@react-three/fiber'
+import { useFrame } from '@react-three/fiber'
 import { useRef } from 'react'
 import type { Group, Mesh, MeshBasicMaterial } from 'three'
 import { Figure } from './Figure'
@@ -129,8 +129,6 @@ export interface MachineProps {
   active: boolean
   selected: boolean
   targetable: boolean
-  onClick: (e: ThreeEvent<MouseEvent>) => void
-  onHover: (over: boolean) => void
 }
 
 const STATUS_COLOUR: Record<string, string> = { slow: '#7fb3ff', fracture: '#ff8a5c', disarm: '#e6d45a', blinded: '#b48cff' }
@@ -149,9 +147,9 @@ export function Machine(p: MachineProps) {
   const frac = Math.max(0, p.hp / p.maxHp)
   return (
     <group ref={group} position={p.position} name={`unit-${p.uid}`}
-      onClick={(e) => { e.stopPropagation(); p.onClick(e) }}
-      onPointerOver={(e) => { e.stopPropagation(); p.onHover(true) }}
-      onPointerOut={() => p.onHover(false)}>
+      // no pointer handlers here: a machine never catches a tap. Units are picked by their hex (BoardCanvas onPick), so a
+      // tall figure in front can never hide the hex behind it (tabletop-kb rules.md rule 25).
+    >
       {/* ground ring decal */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.006, 0]}>
         <ringGeometry args={[0.33, 0.4, 40]} />
@@ -178,11 +176,6 @@ export function Machine(p: MachineProps) {
       <group rotation={[0, facing, 0]}>
         <Figure defId={p.defId} side={p.side} />
       </group>
-      {/* an invisible hit capsule sized to the machine, so a click lands on it rather than the hex behind */}
-      <mesh position={[0, MACHINE_HEIGHT / 2, 0]} visible={false}>
-        <cylinderGeometry args={[0.3, 0.3, MACHINE_HEIGHT, 8]} />
-        <meshBasicMaterial />
-      </mesh>
       <Billboard position={[0, MACHINE_HEIGHT + 0.18, 0]}>
         <mesh position={[0, 0, 0]}>
           <planeGeometry args={[0.62, 0.07]} />
