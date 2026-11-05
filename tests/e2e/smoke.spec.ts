@@ -170,3 +170,37 @@ test('a tap on the hex behind a machine reaches that hex', async ({ page }) => {
   }, [pick.uid, pick.to.q, pick.to.r] as const)
   await page.screenshot({ path: 'e2e-out/pick-behind.png' })
 })
+
+test('mouse: middle drag pans, right drag rotates, and the left button only picks once a middle button is seen', async ({ page }) => {
+  await page.goto('./?team=t_lance&foe=t_hammer&seed=e2e-mouse&auto=1&speed=instant')
+  await page.waitForFunction(() => window.__game?.state() !== null && window.__game!.camera() !== null)
+  await page.waitForTimeout(800)
+  const cam = () => page.evaluate(() => window.__game!.camera()!)
+  const drag = async (button: 'left' | 'middle' | 'right', dx: number, dy: number) => {
+    await page.mouse.move(640, 360)
+    await page.mouse.down({ button })
+    for (let i = 1; i <= 8; i++) await page.mouse.move(640 + (dx * i) / 8, 360 + (dy * i) / 8)
+    await page.mouse.up({ button })
+    await page.waitForTimeout(500)
+  }
+  // a two-button mouse until shown otherwise: the left drag pans
+  let a = await cam()
+  await drag('left', 120, 0)
+  let b = await cam()
+  expect(Math.hypot(b.tx - a.tx, b.tz - a.tz)).toBeGreaterThan(0.2)
+  // the middle drag pans, and marks the mouse as three-button
+  a = b
+  await drag('middle', -120, 0)
+  b = await cam()
+  expect(Math.hypot(b.tx - a.tx, b.tz - a.tz)).toBeGreaterThan(0.2)
+  // now the left drag leaves the camera where it is
+  a = b
+  await drag('left', 120, 60)
+  b = await cam()
+  expect(Math.hypot(b.tx - a.tx, b.tz - a.tz)).toBeLessThan(0.01)
+  // the right drag rotates
+  a = b
+  await drag('right', 150, 0)
+  b = await cam()
+  expect(Math.abs(b.az - a.az)).toBeGreaterThan(0.2)
+})

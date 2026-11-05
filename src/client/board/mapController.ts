@@ -1,6 +1,8 @@
 // The map camera's input and motion (docs/spec/50-presentation.md "Camera and controls"). Pointer events only, so one code path serves touch, pen and mouse.
 //   touch:  one finger drags the map, two fingers twist to rotate and pinch to zoom (towards the midpoint of the fingers).
-//   mouse:  left drag pans, right or middle drag rotates and tilts, wheel zooms towards the cursor, Q / E turn the table, R resets the view.
+//   mouse:  wheel zooms towards the cursor, right drag rotates and tilts, middle drag pans, and the left button picks. A two-button
+//           mouse has no middle button, so the left drag also pans until the first middle press shows the mouse has one; from
+//           then on (remembered in this browser) the left button only picks. Q / E turn the table, R resets the view.
 // A press that moves less than 8 px is a tap (see gesture.ts); a drag or a second finger is never a tap.
 import { PerspectiveCamera, Raycaster, Vector2 } from 'three'
 import {
@@ -21,6 +23,16 @@ import {
   type View,
 } from './cameraModel'
 import { gesture } from './gesture'
+
+/** Set once the player presses a middle mouse button: then the left button only picks, and panning is the middle drag. */
+const THREE_BUTTON_KEY = 'assembly-forge.three-button-mouse'
+let threeButtonMouse = (() => {
+  try {
+    return typeof localStorage !== 'undefined' && localStorage.getItem(THREE_BUTTON_KEY) === '1'
+  } catch {
+    return false
+  }
+})()
 
 const lerp = (a: number, b: number, t: number): number => a + (b - a) * t
 const smooth = (t: number): number => t * t * (3 - 2 * t)
@@ -266,6 +278,18 @@ export class MapController {
 
   private onDown = (e: PointerEvent): void => {
     if (!this.interactive) return
+    if (e.pointerType === 'mouse' && e.button === 1) {
+      // a middle press: this mouse has three buttons, so the left button goes back to picking only; and no browser autoscroll
+      e.preventDefault()
+      if (!threeButtonMouse) {
+        threeButtonMouse = true
+        try {
+          localStorage.setItem(THREE_BUTTON_KEY, '1')
+        } catch {
+          /* remembered for this visit only */
+        }
+      }
+    }
     if (this.pointers.size === 0) {
       gesture.dragged = false
       this.down = { x: e.clientX, y: e.clientY }
@@ -303,7 +327,7 @@ export class MapController {
       return
     }
     const cur = { x: e.clientX, y: e.clientY }
-    if (p.type === 'mouse' && (p.button === 2 || p.button === 1)) {
+    if (p.type === 'mouse' && p.button === 2) {
       if (this.down && isDrag(this.down, cur)) gesture.dragged = true
       this.view.az -= dx * 0.006
       this.goalAz = this.view.az
@@ -312,13 +336,16 @@ export class MapController {
       this.apply()
       return
     }
+    // the left button of a three-button mouse only picks: a drag with it does nothing (and is not a tap either)
+    const leftPicksOnly = p.type === 'mouse' && p.button === 0 && threeButtonMouse
     if (!gesture.dragged) {
       if (this.down && isDrag(this.down, cur)) {
         gesture.dragged = true
-        this.startPan(cur)
+        if (!leftPicksOnly) this.startPan(cur)
       }
       return
     }
+    if (leftPicksOnly) return
     if (!this.panGround) this.startPan(cur)
     this.dragTo(cur)
   }

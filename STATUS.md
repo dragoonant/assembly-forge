@@ -51,13 +51,16 @@ pushed). The owner reviews the set next.**
 - Touch: a long press never selects text or opens a callout (tabletop-kb rule 24), and units are picked by their hex only;
   figures take no taps, so a machine never hides the hex behind it (rule 25).
 - Deploying: a machine flies in fast from a random direction behind its Base, heading on toward the enemy Base.
+- Models are preloaded at startup and never drawn as stand-ins while loading; Deploy waits for them (rule 26).
+- Mouse: wheel zooms, right drag rotates, middle drag pans, left picks; the left drag also pans until a middle press shows a
+  three-button mouse (rule 27). The battle themes crossfade into each other.
 - URL switches: `?slowmo=N` stretches every animation N times for review; `?ai=both` to spectate, `?ai=none` for hotseat, `?speed=fast|instant`, and `?team=..&foe=..&seed=..&auto=1`.
 
 ## Verified (2026-11-04)
 - `npm run typecheck`: clean.
 - `npm test`: 249 engine tests and 22 unit tests pass (the controller's shot-then-dice-then-commit path, the planner).
 - `npm run build`: clean.
-- `npm run e2e` (13 tests, including the HUD on a phone in landscape with every panel folded and no text selection, a tap
+- `npm run e2e` (14 tests, including the mouse map, including the HUD on a phone in landscape with every panel folded and no text selection, a tap
   on the hex behind a machine, and the deploy flight in slow motion): squad select to deploy to a move with real clicks on the 3D board; a whole AI-vs-AI game
   through the client; beats and effects playing at normal and fast speed; and every clip of all six machines in the figure
   viewer (screenshots looked at). All with zero console errors. Screenshots of deploy,

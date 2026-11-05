@@ -2,6 +2,7 @@
 import { Decks, displayName, Names, Packs, roleName, SCENARIO_ID, sideName, squadsFor, teamName, teamNote, teamOrder, teamUnits, Text } from '../engine'
 import { choosePack } from '../packs'
 import { chooseTeam, deploy, resetDeck, toBrief, toggleDeckCard, toSelect } from '../game'
+import { useModelsReady } from '../board/preload'
 import { HUMAN, useGame } from '../store'
 
 function Select() {
@@ -96,6 +97,7 @@ function Brief() {
   const brief = Names.SCENARIOS[SCENARIO_ID]
   const squads = squadsFor(myTeam, foeTeam)
   const deckOk = !myDeck || Decks.legal(myDeck, squads[HUMAN])
+  const models = useModelsReady()
   return (
     <div className="setup-panel brief" data-testid="brief">
       <div className="dim kicker">{S.briefTitle}</div>
@@ -125,8 +127,8 @@ function Brief() {
       <DeckPicker squad={squads[HUMAN]} />
       <div className="setup-foot">
         <button onClick={toSelect}>{S.back}</button>
-        <button className="setup-go" data-testid="deploy" disabled={!deckOk} onClick={() => deploy()}>
-          {S.deploy}
+        <button className="setup-go" data-testid="deploy" disabled={!deckOk || !models.ready} onClick={() => deploy()}>
+          {models.ready ? S.deploy : 'Loading models ' + models.loaded + '/' + models.total}
         </button>
       </div>
     </div>

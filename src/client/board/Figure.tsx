@@ -25,7 +25,7 @@ const FADE_S = 0.15
 /** A once-only clip is sped up to fit its beat, but never more than this. */
 const MAX_SPEED = 1.8
 
-const modelUrl = (defId: string): string => import.meta.env.BASE_URL + 'assets/models/' + defId + '.glb'
+export const modelUrl = (defId: string): string => import.meta.env.BASE_URL + 'assets/models/' + defId + '.glb'
 
 function StaticModel({ scene }: { scene: Object3D }) {
   const node = useMemo(() => {
@@ -127,7 +127,8 @@ export function Figure({ defId, side, pose, frozenAt }: { defId: string; side: 0
   if (!ENABLED_MODELS.includes(defId)) return standIn
   return (
     <Fallback fallback={standIn}>
-      <Suspense fallback={standIn}>
+      {/* nothing while the model loads (it is preloaded at startup, preload.ts); the stand-in only if it fails */}
+      <Suspense fallback={null}>
         <Model defId={defId} pose={pose} frozenAt={frozenAt} />
       </Suspense>
     </Fallback>

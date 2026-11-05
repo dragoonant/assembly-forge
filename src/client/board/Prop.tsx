@@ -9,7 +9,7 @@ import { Box3, Vector3, type Object3D } from 'three'
 /** Props with a finished model. Add a name here in the same commit as its GLB. */
 export const ENABLED_PROPS: readonly string[] = ['objective', 'garrison', 'base', 'crate', 'energy', 'wreck_a', 'wreck_b']
 
-const propUrl = (name: string): string => import.meta.env.BASE_URL + 'assets/models/props/' + name + '.glb'
+export const propUrl = (name: string): string => import.meta.env.BASE_URL + 'assets/models/props/' + name + '.glb'
 
 function PropModel({ name, width, height }: { name: string; width?: number; height?: number }) {
   const gltf = useGLTF(propUrl(name))
@@ -49,7 +49,8 @@ export function Prop({ name, width, height, fallback }: { name: string; width?: 
   if (!ENABLED_PROPS.includes(name)) return <>{fallback}</>
   return (
     <Fallback fallback={fallback}>
-      <Suspense fallback={fallback}>
+      {/* nothing while the model loads (preloaded at startup, preload.ts); the primitive only if it fails */}
+      <Suspense fallback={null}>
         <PropModel name={name} width={width} height={height} />
       </Suspense>
     </Fallback>
