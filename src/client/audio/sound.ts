@@ -1,7 +1,7 @@
 // Sound. The cues are synthesized in the browser with the Web Audio API, so nothing is fetched and no paid generation
 // was spent on them; recorded cues can replace these later under the same names (MegaMechaTactics' SFX_PROMPTS keys).
 // The one music bed (generated for MegaMechaTactics) loops quietly on the setup screens; in a battle three generated
-// battle themes (made locally with MusicGen, tools/make-music-local.py) play in turn, each to its end, then the next. Mix levels follow the 2D game:
+// battle themes (made locally with MusicGen, tools/make-music-local.py) play in turn, crossfading into each other. Mix levels follow the 2D game:
 // cues about 0.55, the bed about 0.28, battle music a touch louder. Audio starts only after the first user gesture, as browsers require.
 import { getStore, setStore } from '../store'
 
@@ -125,37 +125,81 @@ export function music(on: boolean): void {
   }
 }
 
-function playBattleTrack(): void {
+/** Seconds the next battle theme overlaps the end of the current one, so there is never a gap between tracks. */
+const XFADE_S = 4
+/** The outgoing theme while a crossfade runs. */
+let fading: HTMLAudioElement | null = null
+
+/** Move an element's volume from one level to another over a number of seconds, then call back. */
+function ramp(el: HTMLAudioElement, from: number, to: number, s: number, then?: () => void): void {
+  const t0 = performance.now()
+  el.volume = from
+  const iv = setInterval(() => {
+    const k = Math.min(1, (performance.now() - t0) / (s * 1000))
+    el.volume = Math.max(0, Math.min(1, from + (to - from) * k))
+    if (k >= 1) {
+      clearInterval(iv)
+      if (then) then()
+    }
+  }, 50)
+}
+
+function playBattleTrack(fadeIn: boolean): void {
   if (!battleOn || getStore().muted || typeof Audio === 'undefined') return
   const name = BATTLE_TRACKS[battleIdx % BATTLE_TRACKS.length]!
   const el = new Audio(import.meta.env.BASE_URL + 'audio/music/' + name + '.mp3')
-  el.volume = BATTLE_GAIN
-  el.addEventListener('ended', () => {
+  el.volume = fadeIn ? 0 : BATTLE_GAIN
+  let handed = false
+  // XFADE_S before the end, start the next theme rising while this one falls away under it
+  const handOver = (): void => {
+    if (handed || battle !== el || !battleOn) return
+    handed = true
     battleIdx++
-    playBattleTrack()
+    fading = el
+    ramp(el, el.volume, 0, XFADE_S, () => {
+      el.pause()
+      if (fading === el) fading = null
+    })
+    playBattleTrack(true)
+  }
+  el.addEventListener('timeupdate', () => {
+    if (Number.isFinite(el.duration) && el.duration - el.currentTime <= XFADE_S) handOver()
   })
+  el.addEventListener('ended', handOver)
   el.addEventListener('error', () => {
     // a missing or broken track is skipped; after a full round of failures the battle stays quiet
+    if (battle !== el) return
     battleFails++
     battleIdx++
-    if (battleFails < BATTLE_TRACKS.length) playBattleTrack()
+    if (battleFails < BATTLE_TRACKS.length) playBattleTrack(false)
   })
   el.addEventListener('playing', () => {
     battleFails = 0
   })
   battle = el
-  void el.play().catch(() => undefined)
+  void el
+    .play()
+    .then(() => {
+      if (fadeIn) ramp(el, 0, BATTLE_GAIN, XFADE_S)
+    })
+    .catch(() => undefined)
 }
 
-/** The battle themes, in turn; false stops them (and the next battle starts with the following track). */
+/** The battle themes, in turn and crossfaded; false stops them (and the next battle starts with the following track). */
 export function battleMusic(on: boolean): void {
   if (on) {
     if (battleOn && battle && !battle.paused) return
     battleOn = true
-    if (battle && battle.paused && battle.currentTime > 0 && !battle.ended) void battle.play().catch(() => undefined)
-    else playBattleTrack()
+    if (battle && battle.paused && battle.currentTime > 0 && !battle.ended) {
+      battle.volume = BATTLE_GAIN
+      void battle.play().catch(() => undefined)
+    } else playBattleTrack(false)
   } else {
     battleOn = false
+    if (fading) {
+      fading.pause()
+      fading = null
+    }
     if (battle) {
       battle.pause()
       if (battle.currentTime > 0) battleIdx++
@@ -174,6 +218,10 @@ export function setMuted(muted: boolean): void {
   if (muted) {
     music(false)
     if (battle) battle.pause()
+    if (fading) {
+      fading.pause()
+      fading = null
+    }
   } else if (getStore().screen === 'play') {
     battleOn = false
     battleMusic(true)
