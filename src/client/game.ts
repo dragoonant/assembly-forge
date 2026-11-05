@@ -1,8 +1,9 @@
 // The controller: the only code that changes the engine state. Every action, the player's or the AI's, goes through
-// `perform`: apply it with the engine, play the blocking animation beats (a walk, a deploy, a shot), show the dice for an
-// attack, then commit the new state and start the effects (bursts, wrecks, labels, banners). The board therefore never
-// jumps to a result before the motion that caused it, and damage lands with the dice (the 2D game's rule, kept).
-import { apply, deciderSide, displayName, isTerminal, newSkirmish, aiChoose, type Action, type GameState } from './engine'
+// `perform`: apply it with the engine, play the blocking animation beats in order (a walk, a deploy, and for an attack
+// the dice panel first and then the shot), then commit the new state and start the effects (bursts, wrecks, labels,
+// banners). The board therefore never jumps to a result before the motion that caused it: the dice say what will
+// happen, the shot plays it, and the damage lands as the shot does.
+import { apply, deciderSide, displayName, isTerminal, newSkirmish, aiChoose, type Action, type GameState, type LogEntry } from './engine'
 import { canAdd, cpuSquad, squadSize, type Difficulty } from './squads'
 import { preloadSquads } from './board/preload'
 import { battleMusic, music } from './audio/sound'
@@ -120,20 +121,14 @@ export function humanTurn(): boolean {
   return d !== null && !ai[d]
 }
 
-function lastAttack(s: GameState) {
-  for (let i = s.log.length - 1; i >= 0; i--) if (s.log[i]!.t === 'attack') return s.log[i]!
-  return null
-}
-
 /** Show the dice for an attack already resolved in `next`. Resolves when the panel is dismissed. */
-function showDice(next: GameState, auto: boolean): Promise<void> {
-  const o = lastAttack(next)
-  if (!o || getStore().speed === 'instant') return Promise.resolve()
-  const attacker = next.units[o.uid as string]!
+function showDice(o: LogEntry, next: GameState, auto: boolean): Promise<void> {
+  if (getStore().speed === 'instant') return Promise.resolve()
+  const attacker = next.units[o.uid as string]
   const target = o.target.kind === 'unit' ? displayName(next.units[o.target.id]!.defId) : 'Garrison'
   return new Promise((resolve) => {
     diceDone = resolve
-    setStore({ dice: { outcome: o, attacker: displayName(attacker.defId), target, weapon: displayName(o.wid as string), auto } })
+    setStore({ dice: { outcome: o, attacker: attacker ? displayName(attacker.defId) : 'Attacker', target, weapon: displayName(o.wid as string), auto } })
   })
 }
 
@@ -156,9 +151,8 @@ async function perform(action: Action, byAI: boolean): Promise<number> {
   const entries = newEntries(game, next)
   const p = plan(game, next, entries)
   setStore({ busy: true, armed: null, openItem: null, picks: null })
-  await runBeats(p.beats)
-  // dice whenever this step completed an attack, whatever kind of action finished it (a response, a pass)
-  if (entries.some((e) => e.t === 'attack')) await showDice(next, byAI)
+  // an attack's dice beat comes before its shot, whatever kind of action finished the attack (a response, a pass)
+  await runBeats(p.beats, (b) => showDice(b.outcome, next, byAI), () => mine === epoch)
   if (mine !== epoch) return 0
   commit(next)
   return runEffects(p.effects, next, p.settle)

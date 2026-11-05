@@ -17,7 +17,8 @@ for (const speed of ['normal', 'fast'] as const) {
 
     const seen = new Set<string>()
     const shots = new Set<string>()
-    const deadline = Date.now() + (speed === 'normal' ? 40_000 : 25_000)
+    // an attack now rolls its dice before the shot plays, so the first shot comes a little later than the first attack
+    const deadline = Date.now() + (speed === 'normal' ? 60_000 : 30_000)
     let effects = 0
     while (Date.now() < deadline && !(seen.has('move') && seen.has('shot') && seen.has('deploy') && effects > 0)) {
       const b = await page.evaluate(() => window.__game!.beat())

@@ -68,7 +68,8 @@ export interface GameStore {
   beatMs: number
   /** Non-blocking effects, each with the time it was born. */
   bursts: { id: number; at: Axial; colour: string; born: number }[]
-  wrecks: { id: number; defId: string; side: Side; at: Axial; born: number }[]
+  /** A destroyed machine flying off the board, for `ms`. */
+  wrecks: { id: number; defId: string; side: Side; at: Axial; born: number; ms: number }[]
   floats: { id: number; at: Axial; text: string; colour: string; born: number }[]
   scorches: { id: number; at: Axial; phase: number; round: number }[]
   banner: { text: string; born: number } | null
