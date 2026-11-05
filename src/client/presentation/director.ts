@@ -71,6 +71,8 @@ export function runEffects(effects: Effect[], game: GameState, settleS: number):
     } else if (e.kind === 'float') {
       setStore((s) => ({ floats: [...s.floats, { id, at: e.at, text: e.text, colour: e.colour, born }] }))
       later(EFFECT_MS.float * f, () => setStore((s) => ({ floats: s.floats.filter((x) => x.id !== id) })))
+    } else if (e.kind === 'hurt') {
+      setStore((s) => ({ hurt: { ...s.hurt, [e.uid]: born } }))
     } else if (e.kind === 'banner') {
       setStore({ banner: { text: e.text, born } })
       later(EFFECT_MS.banner * f, () => setStore((s) => (s.banner && s.banner.born === born ? { banner: null } : {})))
@@ -86,6 +88,6 @@ function later(ms: number, fn: () => void): void {
 /** Clear every effect, for a new game. */
 export function clearEffects(): void {
   skipCurrent = null
-  setStore({ beat: null, bursts: [], wrecks: [], floats: [], scorches: [], banner: null })
+  setStore({ beat: null, bursts: [], wrecks: [], floats: [], scorches: [], banner: null, hurt: {} })
   viewApi.orbit(false)
 }

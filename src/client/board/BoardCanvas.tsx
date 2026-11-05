@@ -1,28 +1,45 @@
-// The 3D board, drawn from engine state and the affordances derived from legal actions. Terrain is one instanced hex prism
-// per cell; highlights are flat hex rings laid on the tiles; machines are the stand-ins from Machine.tsx. Every click checks
+// The 3D board, drawn from engine state and the affordances derived from legal actions. Terrain is instanced hex prisms, one
+// set per terrain skin; highlights are flat hex rings laid on the tiles; machines are the stand-ins from Machine.tsx. Every click checks
 // the 8 px tap rule first, so a camera drag never also moves a machine.
-import { Line } from '@react-three/drei'
+import { Line, useTexture } from '@react-three/drei'
 import { Canvas, useFrame, type ThreeEvent } from '@react-three/fiber'
 import { useLayoutEffect, useMemo, useRef } from 'react'
-import { Color, Object3D, type InstancedMesh, type Mesh } from 'three'
+import { Color, MeshStandardMaterial, Object3D, RepeatWrapping, SRGBColorSpace, type Group, type InstancedMesh } from 'three'
 import { actionForHex, affordances, hexKey } from '../affordances'
 import { cellsOf, losTrace, unitAt, weaponsOf, type Axial, type GameState } from '../engine'
 import { humanTurn, take } from '../game'
 import { setStore, useGame } from '../store'
 import { CameraRig } from './CameraRig'
+import { Prop } from './Prop'
 import { isTap } from './gesture'
 import { HEX_SIZE, frameFor, hexToWorld, topOf, worldToHex, type Cell, type Frame } from './hexLayout'
 import { Machine, SIDE_COLOUR } from './Machine'
 import { DeployGhost, Effects, Tracer, UnitMover, type WorldOf } from './Motion'
 
-/** Placeholder terrain colours on gunmetal, ahead of the hangar-deck skin (PLAN.md D5, M5). */
-const TERRAIN_COLOUR: Record<string, string> = {
-  open: '#545a63',
-  debris: '#6e5a44',
-  water: '#2f5f7a',
-  field: '#5a4f78',
-  blocked: '#1f2126',
+/**
+ * The hangar-deck skin (PLAN.md D5): each terrain is a set of tiles with its own top texture, and raised hexes are stacked
+ * cargo containers. Textures live in public/assets/textures (docs/figures.md, "Deck textures"). The instance colour tints
+ * the texture: a little lighter per level up, and a small per-tile jitter so a field of identical plates does not read as
+ * wallpaper. Every tile is also turned a random sixth of a turn, which the hex prism allows for free.
+ */
+interface Skin {
+  top: string
+  side: string
+  tint: string
+  roughness: number
+  metalness: number
+  emissive?: string
 }
+const SKINS: Record<string, Skin> = {
+  open: { top: 'deck_open', side: 'crate_side', tint: '#ffffff', roughness: 0.7, metalness: 0.1 },
+  raised: { top: 'crate_top', side: 'crate_side', tint: '#f2f5f8', roughness: 0.65, metalness: 0.1 },
+  debris: { top: 'deck_debris', side: 'crate_side', tint: '#fff2e0', roughness: 0.8, metalness: 0.1 },
+  water: { top: 'deck_water', side: 'crate_side', tint: '#e6f6ff', roughness: 0.12, metalness: 0.15 },
+  field: { top: 'deck_open', side: 'crate_side', tint: '#c3b0ff', roughness: 0.6, metalness: 0.1, emissive: '#3a2370' },
+  blocked: { top: 'deck_scorched', side: 'crate_side', tint: '#d8d8d8', roughness: 0.85, metalness: 0.1 },
+}
+const textureUrl = (name: string): string => import.meta.env.BASE_URL + 'assets/textures/' + name + '.jpg'
+const skinOf = (cell: Cell): string => (cell.terrain === 'open' && cell.elevation > 0 ? 'raised' : SKINS[cell.terrain] ? cell.terrain : 'open')
 const GAP = 0.94 // hex prisms are drawn a hair small so a thin seam shows between tiles
 const HL = { move: '#5fd17a', dash: '#f0a830', deploy: '#7fd4ff', shoot: '#ff3b30', hover: '#ffffff', push: '#c58cff' } as const
 
@@ -32,28 +49,61 @@ function topAt(game: GameState, h: Axial): number {
   return cell ? topOf(cell) : 0
 }
 
-function HexTiles({ cells, frame, onPick, onHover }: { cells: Cell[]; frame: Frame; onPick: (c: Cell) => void; onHover: (c: Cell | null) => void }) {
+/** A small stable hash of a hex, for per-tile variety that does not change between renders. */
+function hexHash(c: Axial): number {
+  let h = (c.q * 73856093) ^ (c.r * 19349663)
+  h = Math.imul(h ^ (h >>> 13), 0x5bd1e995)
+  return ((h ^ (h >>> 15)) >>> 0) / 4294967296
+}
+
+function useSkinMaterials(skin: Skin): MeshStandardMaterial[] {
+  const [top, side] = useTexture([textureUrl(skin.top), textureUrl(skin.side)])
+  return useMemo(() => {
+    const t = top!.clone()
+    t.colorSpace = SRGBColorSpace
+    t.anisotropy = 8
+    t.needsUpdate = true
+    const sideTex = side!.clone()
+    sideTex.colorSpace = SRGBColorSpace
+    sideTex.wrapS = RepeatWrapping
+    sideTex.repeat.set(6, 1) // once per face of the prism
+    sideTex.needsUpdate = true
+    const common = {
+      roughness: skin.roughness,
+      metalness: skin.metalness,
+      emissive: new Color(skin.emissive ?? '#000000'),
+      emissiveIntensity: skin.emissive ? 0.6 : 0,
+    }
+    // CylinderGeometry groups: 0 = side, 1 = top cap, 2 = bottom cap
+    return [new MeshStandardMaterial({ map: sideTex, ...common }), new MeshStandardMaterial({ map: t, ...common }), new MeshStandardMaterial({ color: '#111111' })]
+  }, [top, side, skin])
+}
+
+function TileSet({ skin, cells, frame, onPick, onHover }: { skin: Skin; cells: Cell[]; frame: Frame; onPick: (c: Cell) => void; onHover: (c: Cell | null) => void }) {
   const ref = useRef<InstancedMesh>(null)
+  const materials = useSkinMaterials(skin)
   useLayoutEffect(() => {
     const mesh = ref.current
     if (!mesh) return
     const o = new Object3D()
     const c = new Color()
+    const base = new Color(skin.tint)
     cells.forEach((cell, i) => {
       const p = hexToWorld(cell, frame)
-      const h = topOf(cell) + (cell.terrain === 'blocked' ? 0.5 : 0)
+      const h = topOf(cell)
+      const r = hexHash(cell)
       o.position.set(p.x, h / 2, p.z)
+      o.rotation.set(0, Math.floor(r * 6) * (Math.PI / 3), 0)
       o.scale.set(1, h, 1)
       o.updateMatrix()
       mesh.setMatrixAt(i, o.matrix)
-      c.set(TERRAIN_COLOUR[cell.terrain] ?? TERRAIN_COLOUR.open!)
-      if (cell.elevation > 0) c.offsetHSL(0, 0, 0.07 * cell.elevation)
+      c.copy(base).offsetHSL(0, 0, 0.06 * cell.elevation + (r - 0.5) * 0.08)
       mesh.setColorAt(i, c)
     })
     mesh.instanceMatrix.needsUpdate = true
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
     mesh.computeBoundingSphere()
-  }, [cells, frame])
+  }, [cells, frame, skin])
   const pick = (e: ThreeEvent<MouseEvent>) => {
     e.stopPropagation()
     if (e.instanceId === undefined || !isTap()) return
@@ -62,7 +112,7 @@ function HexTiles({ cells, frame, onPick, onHover }: { cells: Cell[]; frame: Fra
   return (
     <instancedMesh
       ref={ref}
-      args={[undefined, undefined, cells.length]}
+      args={[undefined, materials, cells.length]}
       receiveShadow
       castShadow
       onClick={pick}
@@ -73,8 +123,52 @@ function HexTiles({ cells, frame, onPick, onHover }: { cells: Cell[]; frame: Fra
     >
       {/* a 6-sided cylinder has a corner on +z, which is pointy-top in this layout; height 1 is scaled per instance */}
       <cylinderGeometry args={[HEX_SIZE * GAP, HEX_SIZE * GAP, 1, 6]} />
-      <meshStandardMaterial roughness={0.85} metalness={0.25} />
     </instancedMesh>
+  )
+}
+
+function HexTiles({ cells, frame, onPick, onHover }: { cells: Cell[]; frame: Frame; onPick: (c: Cell) => void; onHover: (c: Cell | null) => void }) {
+  const groups = useMemo(() => {
+    const m = new Map<string, Cell[]>()
+    for (const c of cells) {
+      const k = skinOf(c)
+      if (!m.has(k)) m.set(k, [])
+      m.get(k)!.push(c)
+    }
+    return [...m.entries()]
+  }, [cells])
+  return (
+    <>
+      {groups.map(([k, cs]) => (
+        <TileSet key={k} skin={SKINS[k]!} cells={cs} frame={frame} onPick={onPick} onHover={onHover} />
+      ))}
+      <Wrecks cells={cells} frame={frame} />
+    </>
+  )
+}
+
+/** Blocked hexes carry a wreck: one of two hull models, turned per hex; a dark block stands in if the models are missing. */
+function Wrecks({ cells, frame }: { cells: Cell[]; frame: Frame }) {
+  return (
+    <>
+      {cells
+        .filter((c) => c.terrain === 'blocked')
+        .map((c) => {
+          const p = hexToWorld(c, frame)
+          const r = hexHash(c)
+          const block = (
+            <mesh position={[0, 0.25, 0]} castShadow>
+              <cylinderGeometry args={[HEX_SIZE * 0.8, HEX_SIZE * 0.9, 0.5, 6]} />
+              <meshStandardMaterial color="#1f2126" roughness={0.9} />
+            </mesh>
+          )
+          return (
+            <group key={c.q + ',' + c.r} position={[p.x, topOf(c), p.z]} rotation={[0, r * Math.PI * 2, 0]}>
+              <Prop name={r < 0.5 ? 'wreck_a' : 'wreck_b'} width={0.95} fallback={block} />
+            </group>
+          )
+        })}
+    </>
   )
 }
 
@@ -98,12 +192,22 @@ function Objectives({ game, frame }: { game: GameState; frame: Frame }) {
         const colour = o.controlledBy === null ? '#e8e2c8' : SIDE_COLOUR[o.controlledBy]
         return (
           <group key={oid} position={[p.x, y, p.z]} name={`objective-${oid}`}>
-            <mesh position={[0, 0.02, 0]}>
-              <cylinderGeometry args={[0.22, 0.26, 0.04, 24]} />
-              <meshStandardMaterial color={colour} emissive={colour} emissiveIntensity={0.5} />
+            <Prop
+              name="objective"
+              height={0.5}
+              fallback={
+                <mesh position={[0, 0.02, 0]}>
+                  <cylinderGeometry args={[0.22, 0.26, 0.04, 24]} />
+                  <meshStandardMaterial color={colour} emissive={colour} emissiveIntensity={0.5} />
+                </mesh>
+              }
+            />
+            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.012, 0]}>
+              <ringGeometry args={[0.27, 0.31, 32]} />
+              <meshBasicMaterial color={colour} />
             </mesh>
-            <mesh position={[0, 0.55, 0]}>
-              <cylinderGeometry args={[0.025, 0.025, 1.0, 8]} />
+            <mesh position={[0, 0.75, 0]}>
+              <cylinderGeometry args={[0.025, 0.025, 0.6, 8]} />
               <meshBasicMaterial color={colour} transparent opacity={0.55} />
             </mesh>
             {/* one pip per VP around the marker, so its worth reads on the board */}
@@ -131,15 +235,21 @@ function Garrisons({ game, frame, shootable }: { game: GameState; frame: Frame; 
         const colour = g.side === null ? '#bbbbbb' : SIDE_COLOUR[g.side]
         return (
           <group key={gid} position={[p.x, y, p.z]} name={`garrison-${gid}`}>
-            <mesh position={[0, 0.13, 0]} castShadow>
-              <boxGeometry args={[0.42, 0.26, 0.36]} />
-              <meshStandardMaterial color="#6d737c" roughness={0.7} />
-            </mesh>
-            <mesh position={[0.12, 0.5, 0]}>
-              <cylinderGeometry args={[0.012, 0.012, 0.5, 6]} />
+            <Prop
+              name="garrison"
+              width={0.72}
+              fallback={
+                <mesh position={[0, 0.13, 0]} castShadow>
+                  <boxGeometry args={[0.42, 0.26, 0.36]} />
+                  <meshStandardMaterial color="#6d737c" roughness={0.7} />
+                </mesh>
+              }
+            />
+            <mesh position={[0.3, 0.45, 0]}>
+              <cylinderGeometry args={[0.012, 0.012, 0.6, 6]} />
               <meshStandardMaterial color="#d0d4da" />
             </mesh>
-            <mesh position={[0.21, 0.66, 0]}>
+            <mesh position={[0.39, 0.66, 0]}>
               <boxGeometry args={[0.18, 0.11, 0.01]} />
               <meshStandardMaterial color={colour} emissive={colour} emissiveIntensity={0.3} />
             </mesh>
@@ -159,10 +269,20 @@ function Bases({ game, frame }: { game: GameState; frame: Frame }) {
         const y = topAt(game, b.hex)
         return (
           <group key={b.bid} position={[p.x, y, p.z]} name={`base-${b.side}`}>
-            <mesh position={[0, 0.04, 0]} receiveShadow>
-              <cylinderGeometry args={[HEX_SIZE * 0.78, HEX_SIZE * 0.84, 0.08, 6]} />
-              <meshStandardMaterial color={SIDE_COLOUR[b.side]} roughness={0.5} metalness={0.4} emissive={SIDE_COLOUR[b.side]} emissiveIntensity={0.15} />
+            <mesh rotation={[-Math.PI / 2, 0, Math.PI / 6]} position={[0, 0.01, 0]}>
+              <ringGeometry args={[HEX_SIZE * 0.8, HEX_SIZE * 0.92, 6, 1]} />
+              <meshBasicMaterial color={SIDE_COLOUR[b.side]} />
             </mesh>
+            <Prop
+              name="base"
+              width={0.9}
+              fallback={
+                <mesh position={[0, 0.04, 0]} receiveShadow>
+                  <cylinderGeometry args={[HEX_SIZE * 0.78, HEX_SIZE * 0.84, 0.08, 6]} />
+                  <meshStandardMaterial color={SIDE_COLOUR[b.side]} roughness={0.5} metalness={0.4} emissive={SIDE_COLOUR[b.side]} emissiveIntensity={0.15} />
+                </mesh>
+              }
+            />
           </group>
         )
       })}
@@ -172,19 +292,31 @@ function Bases({ game, frame }: { game: GameState; frame: Frame }) {
 
 const PICKUP_COLOUR: Record<string, string> = { shield: '#7fd4ff', speed: '#5fd17a', strength: '#ff8a5c', accuracy: '#e6d45a', energy: '#f0a830' }
 
-function PickupGem({ x, y, z, colour }: { x: number; y: number; z: number; colour: string }) {
-  const ref = useRef<Mesh>(null)
+function PickupGem({ x, y, z, colour, kind }: { x: number; y: number; z: number; colour: string; kind: 'upgrade' | 'energy' }) {
+  const ref = useRef<Group>(null)
   useFrame(({ clock }) => {
     if (ref.current) {
-      ref.current.rotation.y = clock.elapsedTime * 1.2
-      ref.current.position.y = y + 0.35 + Math.sin(clock.elapsedTime * 2) * 0.04
+      ref.current.rotation.y = clock.elapsedTime * 0.8
+      ref.current.position.y = y + 0.08 + Math.sin(clock.elapsedTime * 2) * 0.03
     }
   })
-  return (
-    <mesh ref={ref} position={[x, y + 0.35, z]}>
+  const gem = (
+    <mesh position={[0, 0.2, 0]}>
       <octahedronGeometry args={[0.13]} />
       <meshStandardMaterial color={colour} emissive={colour} emissiveIntensity={0.6} />
     </mesh>
+  )
+  return (
+    <group position={[x, y, z]}>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.012, 0]}>
+        <ringGeometry args={[0.16, 0.21, 32]} />
+        <meshBasicMaterial color={colour} transparent opacity={0.85} />
+      </mesh>
+      <group ref={ref} position={[0, 0.08, 0]}>
+        <Prop name={kind === 'energy' ? 'energy' : 'crate'} height={kind === 'energy' ? 0.34 : 0.24} fallback={gem} />
+        <pointLight color={colour} intensity={0.6} distance={0.8} position={[0, 0.25, 0]} />
+      </group>
+    </group>
   )
 }
 
@@ -194,7 +326,7 @@ function Pickups({ game, frame }: { game: GameState; frame: Frame }) {
       {game.pickups.map((pk) => {
         const p = hexToWorld(pk.hex, frame)
         const colour = PICKUP_COLOUR[pk.kind === 'energy' ? 'energy' : pk.upgrade ?? 'shield'] ?? '#ffffff'
-        return <PickupGem key={pk.pid} x={p.x} y={topAt(game, pk.hex)} z={p.z} colour={colour} />
+        return <PickupGem key={pk.pid} x={p.x} y={topAt(game, pk.hex)} z={p.z} colour={colour} kind={pk.kind} />
       })}
     </>
   )

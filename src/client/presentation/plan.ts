@@ -9,7 +9,7 @@ import { Names, type Axial, type GameState, type LogEntry, type Side } from '../
 export const WALK_S_PER_HEX = 0.66
 
 export type Beat =
-  | { kind: 'move'; uid: string; path: Axial[]; dur: number }
+  | { kind: 'move'; uid: string; path: Axial[]; dur: number; dash?: boolean }
   | { kind: 'deploy'; uid: string; at: Axial; dur: number }
   | { kind: 'shot'; uid: string; to: Axial; melee: boolean; dur: number }
 
@@ -20,6 +20,8 @@ export type Effect =
   | { kind: 'banner'; text: string }
   | { kind: 'cue'; cue: string }
   | { kind: 'orbit' }
+  /** A unit took damage and survived: its figure flinches. */
+  | { kind: 'hurt'; uid: string }
 
 export interface Plan {
   beats: Beat[]
@@ -45,7 +47,7 @@ export function plan(prev: GameState, next: GameState, entries: LogEntry[]): Pla
       case 'move':
       case 'dash': {
         const path: Axial[] = e.path && e.path.length > 1 ? e.path : [e.from, e.to]
-        beats.push({ kind: 'move', uid: e.uid, path, dur: WALK_S_PER_HEX * (path.length - 1) })
+        beats.push({ kind: 'move', uid: e.uid, path, dur: WALK_S_PER_HEX * (path.length - 1), ...(e.t === 'dash' ? { dash: true } : {}) })
         effects.push({ kind: 'cue', cue: 'move' })
         break
       }
@@ -65,6 +67,7 @@ export function plan(prev: GameState, next: GameState, entries: LogEntry[]): Pla
           beats.push({ kind: 'shot', uid: e.uid, to, melee: Boolean(w && w.range <= 1), dur: 0.45 })
           effects.push({ kind: 'cue', cue: e.destroyed ? 'destroy' : e.damage > 0 ? 'hit' : 'miss' })
           effects.push({ kind: 'burst', at: to, colour: e.damage > 0 ? COLOUR.hit : COLOUR.miss })
+          if (e.target.kind === 'unit' && e.damage > 0 && !e.destroyed) effects.push({ kind: 'hurt', uid: e.target.id })
           effects.push({ kind: 'float', at: to, text: e.damage > 0 ? '-' + e.damage : 'miss', colour: e.damage > 0 ? COLOUR.hit : COLOUR.miss })
           if (e.status) effects.push({ kind: 'float', at: to, text: Names.STATUSES[e.status] ?? String(e.status), colour: COLOUR.status })
           settle = Math.max(settle, 0.5)

@@ -47,6 +47,8 @@ export interface GameStore {
   floats: { id: number; at: Axial; text: string; colour: string; born: number }[]
   scorches: { id: number; at: Axial; phase: number; round: number }[]
   banner: { text: string; born: number } | null
+  /** When each unit last took damage (performance.now), so its figure can flinch. */
+  hurt: Record<string, number>
   muted: boolean
 }
 
@@ -75,6 +77,7 @@ export const useGame = create<GameStore>(() => ({
   floats: [],
   scorches: [],
   banner: null,
+  hurt: {},
   muted: false,
 }))
 

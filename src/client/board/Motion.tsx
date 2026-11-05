@@ -7,9 +7,13 @@ import type { Group, Mesh, MeshBasicMaterial } from 'three'
 import type { Axial } from '../engine'
 import { getStore, useGame } from '../store'
 import { Figure } from './Figure'
+import { MotionContext, type MotionCue } from './motionCue'
 import { sideFacing } from './Machine'
 
 export type WorldOf = (h: Axial) => [number, number, number]
+
+/** How long a figure flinches after taking damage (ms). */
+const HURT_MS = 450
 
 const clamp01 = (t: number): number => Math.max(0, Math.min(1, t))
 const ease = (t: number): number => t * t * (3 - 2 * t)
@@ -25,12 +29,16 @@ function progress(): number {
  */
 export function UnitMover({ uid, side, home, worldOf, children }: { uid: string; side: 0 | 1; home: [number, number, number]; worldOf: WorldOf; children: ReactNode }) {
   const ref = useRef<Group>(null)
+  const cue = useRef<MotionCue>({ clip: 'idle', beatS: 0 })
   useFrame(() => {
     const g = ref.current
     if (!g) return
-    const b = getStore().beat
+    const st = getStore()
+    const b = st.beat
     let [x, y, z] = home
     let yaw = 0
+    const hurtAt = st.hurt[uid]
+    cue.current = hurtAt !== undefined && performance.now() - hurtAt < HURT_MS ? { clip: 'hit', beatS: HURT_MS / 1000 } : { clip: 'idle', beatS: 0 }
     if (b && 'uid' in b && b.uid === uid) {
       const t = progress()
       if (b.kind === 'move' && b.path.length > 1) {
@@ -44,6 +52,8 @@ export function UnitMover({ uid, side, home, worldOf, children }: { uid: string;
         z = a[2] + (c[2] - a[2]) * f
         // a hop on a change of level, a slight bob on the flat
         const hop = a[1] !== c[1] ? 0.35 * Math.sin(Math.PI * f) : 0.03 * Math.sin(Math.PI * f)
+        const segS = b.dur / (pts.length - 1)
+        cue.current = b.dash ? { clip: 'fly', beatS: b.dur } : a[1] !== c[1] ? { clip: 'jump', beatS: segS } : { clip: 'walk', beatS: b.dur }
         y = a[1] + (c[1] - a[1]) * f + hop
         yaw = Math.atan2(c[0] - a[0], c[2] - a[2]) - sideFacing(side)
       } else if (b.kind === 'shot') {
@@ -51,6 +61,7 @@ export function UnitMover({ uid, side, home, worldOf, children }: { uid: string;
         const dx = to[0] - x
         const dz = to[2] - z
         yaw = Math.atan2(dx, dz) - sideFacing(side)
+        cue.current = { clip: b.melee ? 'melee' : 'shoot', beatS: b.dur }
         if (b.melee) {
           const len = Math.hypot(dx, dz) || 1
           const l = 0.35 * Math.sin(Math.PI * t)
@@ -63,9 +74,11 @@ export function UnitMover({ uid, side, home, worldOf, children }: { uid: string;
     g.rotation.y = yaw
   })
   return (
-    <group ref={ref} position={home}>
-      {children}
-    </group>
+    <MotionContext.Provider value={cue}>
+      <group ref={ref} position={home}>
+        {children}
+      </group>
+    </MotionContext.Provider>
   )
 }
 
@@ -83,7 +96,7 @@ export function DeployGhost({ defId, side, at, worldOf }: { defId: string; side:
   return (
     <group ref={ref} position={home}>
       <group rotation={[0, sideFacing(side), 0]}>
-        <Figure defId={defId} side={side} />
+        <Figure defId={defId} side={side} pose="fly" />
       </group>
     </group>
   )
@@ -137,7 +150,7 @@ function Wreck({ defId, side, at, born }: { defId: string; side: 0 | 1; at: [num
   return (
     <group ref={ref} position={at}>
       <group rotation={[0, sideFacing(side), 0]}>
-        <Figure defId={defId} side={side} />
+        <Figure defId={defId} side={side} pose="destroyed" />
       </group>
     </group>
   )

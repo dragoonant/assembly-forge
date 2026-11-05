@@ -8,8 +8,9 @@ Never write the owner's real name, email or home path into this repo, a commit, 
 - **IP rules:** no unit, pilot, faction, series or product name from the source game anywhere in the repo; no published art, map
   layout, card text or frame. Names a player reads live only in `src/content/names.js`. Search a change for trademarks before
   committing.
-- **Figure prompts:** follow the Mallet 42k `docs/FIGURE-STYLE.md` house style, measurements and materials only. Its banned-word list
-  applies to every prompt, brief and template here.
+- **Figure prompts:** follow `docs/figures.md` (second pass, 2026-11-04: premium assembled model-kit proportions, about 3.7
+  head-heights), measurements and materials only. The owner's banned-word list (also in Mallet 42k `docs/FIGURE-STYLE.md`)
+  applies to every prompt, brief and template here. Never attach the owner's kit reference photo to a prompt.
 - **Engine:** `src/engine`, `src/content`, `src/ai` are plain JavaScript with JSDoc, pure and deterministic (seeded generator in
   state, no DOM, no `Math.random`). `apply` never mutates its input. The UI derives every affordance by filtering `legalActions`.
   The TypeScript client reaches the engine only through `src/client/engine.ts`.

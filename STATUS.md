@@ -1,6 +1,8 @@
 # STATUS (rewrite, don't append)
 
-**2026-11-03: M0 to M3 done: the game is playable and animated in 3D. Live at https://dragoonant.github.io/assembly-forge/. M4 (the six machines) is next, with the owner.**
+**2026-11-04: M0 to M3 done; M4 has its models. The six machines are generated, rigged and animated, the board objects
+are models, and the deck is textured. Live at https://dragoonant.github.io/assembly-forge/ (the M4 work deploys when it is
+pushed). The owner reviews the set next.**
 
 ## What exists
 - Vite + React 19 + TypeScript + React Three Fiber, deploying `main` to GitHub Pages under `/assembly-forge/`.
@@ -30,17 +32,25 @@
   and status labels, Phase banners, an orbit at game over). Speeds follow the opponent-speed setting; any click skips.
 - Sound: cues synthesized in the browser (no paid generation), the MegaMechaTactics music bed on the setup screens, and a
   mute toggle that is remembered.
-- Stand-in machines in each machine's own livery and weapon set, and a model loader (`src/client/board/Figure.tsx`) that
-  swaps in `public/assets/models/<id>.glb` for any id listed in `ENABLED_MODELS`, falling back to the stand-in.
-- `docs/figures.md`: the M4 brief, with the house proportions, the approved Gemini recipe, the six briefs and the pipeline.
+- The six machines as generated, rigged models (`public/assets/models/u01.glb` to `u06.glb`, about 1.7 MB each): model-kit
+  proportions, a 17-bone skeleton with stiff armour weighting, and eight clips (idle, walk, jump, fly, melee, shoot, hit,
+  destroyed) that the board picks from the current beat. Stand-ins remain as the fallback.
+- Board objects as models (`public/assets/models/props/`): the objective pylon, garrison pillbox, base pad, supply crate,
+  energy cell and two wrecks on blocked hexes, each keeping its side-colour ring, flag or light.
+- The hangar-deck skin: textured tiles per terrain (diamond-plate deck, debris, flooded water, scorched plate under the
+  wrecks) and cargo-container tops and sides for raised hexes, each tile turned a random sixth of a turn.
+- The figure viewer, `?viewer=u02&clip=walk&t=0.4&yaw=30`, which the e2e suite uses to screenshot every clip.
+- `docs/figures.md`: the M4 brief and the whole pipeline (concepts, re-pose, Hunyuan, `tools/rig/` for rigging, props and
+  packing).
 - URL switches: `?ai=both` to spectate, `?ai=none` for hotseat, `?speed=fast|instant`, and `?team=..&foe=..&seed=..&auto=1`.
 
-## Verified (2026-11-03)
+## Verified (2026-11-04)
 - `npm run typecheck`: clean.
 - `npm test`: 249 engine tests and 22 unit tests pass (the controller's shot-then-dice-then-commit path, the planner).
 - `npm run build`: clean.
-- `npm run e2e` (4 tests): squad select to deploy to a move with real clicks on the 3D board; a whole AI-vs-AI game through
-  the client; and beats and effects playing at normal and fast speed. All with zero console errors. Screenshots of deploy,
+- `npm run e2e` (10 tests): squad select to deploy to a move with real clicks on the 3D board; a whole AI-vs-AI game
+  through the client; beats and effects playing at normal and fast speed; and every clip of all six machines in the figure
+  viewer (screenshots looked at). All with zero console errors. Screenshots of deploy,
   moves, close zoom, mid-game, game over, a phone layout, the Phase banner, a shot, floating labels and the deck picker
   were looked at.
 - `node tools/ai-selfplay.js 96 pairs=all`: 96 games, no crashes, no forced passes; teams 58/56/44/42%.
@@ -50,10 +60,13 @@
 - No person has played a full game yet; the e2e suite and AI games are the evidence so far.
 - Sound has not been heard by anyone: the cues are synthesized and only checked to run without errors.
 - Animations were checked by sampled frames in headless Chromium, not watched at speed by a person.
+- The rigs are fused single meshes from Hunyuan: big swings stretch the armour at the joint (worst in u05's claw wind-up),
+  and the surfaces are softer and more faceted than the concept art.
+- The models and textures come from Hunyuan3D and FLUX.1 dev, both under non-commercial licences.
+- The models add about 17 MB to the first load of a game.
 - Mixed-team games have run about 57% to side 0 across runs with unpaired seeds; re-check with paired seeds.
 - Not checked on a phone or a real GPU; only headless software GL.
 - three, R3F and drei build into one chunk of about 1.3 MB (330 kB gzipped); splitting it is a later tidy-up.
 
 ## Next
-M4 with the owner: concept images for the six machines from `docs/figures.md`, then Hunyuan Studio on the owner's PC, then
-each GLB dropped into `public/assets/models/` and its id added to `ENABLED_MODELS`.
+The owner reviews the machines, props and deck; then fixes from that review, and M5 (card art from the finished models).

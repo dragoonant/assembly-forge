@@ -2,7 +2,7 @@
 
 **Status: approved direction, 2026-11-03.** Nothing below is built. The owner
 settled D1, D2 and D5 to D10, and the card portraits, on 2026-11-03.
-M0 (scaffold), M1 (rules), M2 (playable board) and M3 (presentation) are built; M4 waits on the owner. See STATUS.md.
+M0 (scaffold), M1 (rules), M2 (playable board) and M3 (presentation) are built; M4's models are made and wait on the owner's review. See STATUS.md.
 
 Assembly Forge is the 3D successor to MegaMechaTactics. It keeps that game's
 rules engine, roster, Tactics deck and AI, replaces the SVG hex map with a 3D
@@ -366,23 +366,26 @@ board, and back-porting the reconciled rules to the 2D game.
 
 ## 5. Figures
 
-The machines follow `../Mallet-42k/docs/FIGURE-STYLE.md`, the approved house
-style, read for machines rather than troopers. Every prompt, brief and review
-uses measurements and materials only. That file's banned-word list applies
-here without exception, and the M4 prompt tool refuses a prompt containing
-one.
+**Revised 2026-11-04.** The first concept pass followed Mallet 42k's
+`FIGURE-STYLE.md` (2.8 head-heights, heavy weathered armour), and the owner
+rejected it as reading like miniature-wargame armour. The machines now follow
+`docs/figures.md`: premium assembled mecha model-kit proportions and finish,
+original designs. Every prompt, brief and review uses measurements and
+materials only, and the owner's banned-word list applies without exception.
 
-The look: a highly detailed hard-surface machine, like a premium painted
-model kit. Crisp panel lines, exposed joints and hydraulics at knees and
-elbows, vents, matte paint with edge highlights and light weathering. The head
-is a sensor block or visor, never a face.
+The look: angular, tapered hard-surface armour over a visible grey inner frame,
+crisp panel lines, clean satin paint, clear lens parts, a large back unit. The
+head is a compact sensor housing with a visor or lenses, never a face.
 
-Proportions carried over from the reference:
+Proportions (measured on the owner's reference, which is never attached to a
+prompt):
 
-- About 2.8 head-heights tall, the head block about a third of the height.
-- Shoulders about 1.8 head-widths, heavily armoured.
-- Deep chest; hips to feet about one head; wide planted stance, large feet.
-- The two printed weapons oversized and readable at the overview.
+- About 3.7 head-heights tall, the head about a quarter of the height.
+- Shoulders about two head-widths, angular; slim arms.
+- High compact chest, narrow waist; hips to soles about 1.5 heads, long flared
+  shins, big pointed feet; a ready stance.
+- The two printed weapons readable at the overview, the main one about as long
+  as the machine is tall; the footprint stays inside the hex.
 
 Each machine keeps its name, livery and two weapons from
 `assets/ART_PROMPTS.txt`, rewritten without that file's style words, so the
