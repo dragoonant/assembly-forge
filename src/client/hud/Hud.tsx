@@ -311,11 +311,16 @@ function decisionBar(game: GameState, legal: Action[]): { title: string; hint: s
 function turnBar(game: GameState, u: EngineUnit, legal: Action[], armed: string | null): { title: string; hint: string; groups: BarGroup[] } {
   const one = (t: string) => legal.find((a) => a.type === t)
   const engaged = u.hex ? isEngaged(game, u.side, u.hex) : false
+  // the Primary Action already taken this activation (a Dash, an attack, Energize or a rescue): no further attack
+  const spent = game.activation?.slots.primary ?? null
+  const spentName = spent ? (spent === 'dash' ? 'a Dash' : spent === 'attack' ? 'an attack' : Names.ACTIONS[spent] ?? spent) : ''
+  const canAttack = legal.some((a) => a.type === 'attack')
   const hints: string[] = []
+  if (spent && !canAttack) hints.push('Primary Action used on ' + spentName + ': no attack this activation.')
   if (legal.some((a) => a.type === 'deploy')) hints.push('In reserve: click the glowing hex on your base to deploy, then move off it.')
   if (u.hex && one('advance')?.slowed) hints.push('Mired: this Advance goes nowhere, but clears the status.')
   if (engaged) hints.push('Engaged: moves go one hex less, and attacks must include an adjacent enemy.')
-  if (!hints.length && legal.some((a) => a.type === 'advance' || a.type === 'dash')) hints.push('Green hexes are a free Advance; amber hexes are a Dash.')
+  if (!hints.length && legal.some((a) => a.type === 'advance' || a.type === 'dash')) hints.push('Green hexes are a free Advance; amber hexes are a Dash, which uses your Primary Action (no attack after it).')
 
   const weapons = weaponsOf(u).map((w): BarItem => {
     const shots = legal.filter((a) => a.type === 'attack' && a.wid === w.wid)
@@ -334,7 +339,15 @@ function turnBar(game: GameState, u: EngineUnit, legal: Action[], armed: string 
             {shots[0]?.free ? 'Free' : w.tlCost + ' TL'} · range {w.range} · {w.strength} dice{w.ignoreLos ? ' · ignores line of sight' : ''}
           </div>
           {w.crit && <div>Crit: {Names.critText(w.crit)}</div>}
-          <div className="dim">{shots.length ? shots.length + ' target' + (shots.length > 1 ? 's' : '') + ': click one on the board.' : 'No target in range.'}</div>
+          <div className="dim">
+            {shots.length
+              ? shots.length + ' target' + (shots.length > 1 ? 's' : '') + ': click one on the board.'
+              : spent
+                ? 'Not this activation: its Primary Action went on ' + spentName + ', and an attack is a Primary Action too.'
+                : engaged
+                  ? 'No target: while Engaged, an attack must include an adjacent enemy, and none is in range and line of sight.'
+                  : 'No enemy in range and line of sight.'}
+          </div>
         </>
       ),
     }
