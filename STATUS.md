@@ -23,9 +23,12 @@ pushed). The owner reviews the set next.**
   red rings on targets, a line-of-sight line (dashed red to the blocking hex) while a weapon is armed, and terrain, cost
   and marker facts on hover. Stand-in machines in the house proportions, one silhouette per archetype, with ground rings,
   HP bars and status pips; Objectives, Garrisons, Bases and pickups on the board.
-- The HUD: top bar (score, Phase and round, opponent speed, reset view, new game), the Timeline column, the action column,
-  the Tactics hand, the unit card, the dice panel, a feed of what just happened, and the game-over panel. Phones get strips
-  instead of columns.
+- The HUD (reworked 2026-11-04 from the owner's phone screenshot): top bar (score, Phase and round, opponent speed, reset
+  view, new game); the Timeline as a vertical column at every size; the log and the unit card as panels that minimize to
+  one line (remembered per browser; the unit card starts minimized on narrow screens); and an action bar of small buttons
+  along the bottom (weapons, Commands, actions, then the Tactics hand). A tap opens a button's description above the bar
+  with its Use or Play button; a weapon or Attack card arms on the tap. The bar folds to one line too. The dice panel and
+  the game-over panel are unchanged.
 - The presentation director (`src/client/presentation/`): every action's new log entries become blocking beats (a walk
   along the engine's path with a hop on level changes, a drop onto the Base on deploy, a turn and a tracer or a lunge for a
   shot) and effects (hit bursts, a wreck that topples and sinks and leaves a scorch for the round, floating damage, VP, TL
@@ -49,7 +52,7 @@ pushed). The owner reviews the set next.**
 - `npm run typecheck`: clean.
 - `npm test`: 249 engine tests and 22 unit tests pass (the controller's shot-then-dice-then-commit path, the planner).
 - `npm run build`: clean.
-- `npm run e2e` (10 tests): squad select to deploy to a move with real clicks on the 3D board; a whole AI-vs-AI game
+- `npm run e2e` (11 tests, including the HUD on a phone in landscape with every panel folded): squad select to deploy to a move with real clicks on the 3D board; a whole AI-vs-AI game
   through the client; beats and effects playing at normal and fast speed; and every clip of all six machines in the figure
   viewer (screenshots looked at). All with zero console errors. Screenshots of deploy,
   moves, close zoom, mid-game, game over, a phone layout, the Phase banner, a shot, floating labels and the deck picker

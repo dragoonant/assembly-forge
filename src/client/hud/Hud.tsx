@@ -1,6 +1,6 @@
 // The HUD: DOM over the canvas, never drawn in three (PLAN.md D4). Every button is a legal action, filtered; nothing here
 // knows a rule the engine has not already applied.
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { affordances, hexKey } from '../affordances'
 import {
   abilitiesOf,
@@ -99,13 +99,60 @@ function Banner() {
   return <div className="banner" key={banner.born} data-testid="banner">{banner.text}</div>
 }
 
+// --- folding panels ------------------------------------------------------------------------------------------------------
+
+const NARROW = '(max-width: 899px)'
+
+function isNarrow(): boolean {
+  try {
+    return window.matchMedia(NARROW).matches
+  } catch {
+    return false
+  }
+}
+
+/** Whether a panel is open, remembered per panel in this browser (a convenience only; the default applies without it). */
+function useFold(id: string, defaultOpen: boolean): [boolean, () => void] {
+  const [open, setOpen] = useState<boolean>(() => {
+    try {
+      const v = localStorage.getItem('af-fold:' + id)
+      return v === null ? defaultOpen : v === '1'
+    } catch {
+      return defaultOpen
+    }
+  })
+  const toggle = () =>
+    setOpen((o) => {
+      try {
+        localStorage.setItem('af-fold:' + id, o ? '0' : '1')
+      } catch {
+        // storage unavailable: the panel still folds for this session
+      }
+      return !o
+    })
+  return [open, toggle]
+}
+
+/** A panel whose header minimizes it to one line. */
+function Fold({ id, title, className, testid, defaultOpen = true, children }: { id: string; title: ReactNode; className?: string; testid?: string; defaultOpen?: boolean; children: ReactNode }) {
+  const [open, toggle] = useFold(id, defaultOpen)
+  return (
+    <section className={'panel fold ' + (className ?? '') + (open ? '' : ' closed')} data-testid={testid}>
+      <button className="fold-head" onClick={toggle} aria-expanded={open} title={open ? 'Minimize' : 'Expand'} data-testid={testid ? testid + '-fold' : undefined}>
+        <span className="fold-title">{title}</span>
+        <span className="fold-icon">{open ? '–' : '+'}</span>
+      </button>
+      {open && <div className="fold-body">{children}</div>}
+    </section>
+  )
+}
+
 // --- the Timeline --------------------------------------------------------------------------------------------------------
 
 function Track({ game }: { game: GameState }) {
   const rows = game.timeline.rounds
   return (
-    <aside className="track" data-testid="track">
-      <div className="track-head">{UI.timeline}</div>
+    <Fold id="timeline" className="track" testid="track" title={<><span className="tl-long">{UI.timeline} </span><span className="dim">{UI.round} {game.round}</span></>}>
       {rows.map((r, i) => (
         <div key={i} className={'tr' + (i + 1 === game.round ? ' now' : '')}>
           {([0, 1] as Side[]).map((side) => (
@@ -130,11 +177,16 @@ function Track({ game }: { game: GameState }) {
           <div className="tr-num">{i + 1}</div>
         </div>
       ))}
-    </aside>
+    </Fold>
   )
 }
 
-// --- actions -------------------------------------------------------------------------------------------------------------
+// --- the action bar ------------------------------------------------------------------------------------------------------
+//
+// One row of small buttons along the bottom: the acting machine's weapons, Commands and plain actions, then the Tactics
+// hand. A tap opens the button's description above the bar with its Use or Play button, so nothing acts by accident and
+// the descriptions stay out of the way until asked for. A weapon or an Attack card arms on the tap (the target click on the
+// board is the confirmation). A button with nothing to explain (Pass, Decline) acts at once.
 
 const WINDOW_LABEL: Record<string, string> = {
   beforeRoll: 'Before the attack roll',
@@ -143,234 +195,332 @@ const WINDOW_LABEL: Record<string, string> = {
   wouldBeDefeated: 'Your machine would be destroyed',
 }
 
-/** The prompt while a paused attack waits on this player: response cards, a reacting unit, or nothing to do but pass. */
-function DecisionPanel({ game }: { game: GameState }) {
-  const af = useAffordances()
-  const p = game.pending!
-  const pass = af.legal.find((a) => a.type === 'pass')
-  if (p.kind === 'window') {
-    const cards = af.legal.filter((a) => a.type === 'respond')
-    const hand = game.players[p.side!]!.tactics.hand
-    return (
-      <section className="panel actions decision" data-testid="decision">
-        <div className="panel-head">{WINDOW_LABEL[p.window!] ?? 'Respond'}</div>
-        <RollSoFar game={game} />
-        <p className="hint">Play a response card, or pass.</p>
-        {cards.map((a) => {
-          const c = hand.find((x) => x.cid === a.cid)!
-          return (
-            <button key={a.cid + (a.targetUid ?? '')} className="act ability" data-testid={'respond-' + a.cid + (a.targetUid ? '-' + a.targetUid : '')} onClick={() => take(a)}>
-              <strong>{Text.tacticsName(a.cid)}{a.targetUid ? ' · ' + displayName(game.units[a.targetUid]!.defId) : ''}</strong>
-              <span className="dim">{Text.abilityText(c)}</span>
-            </button>
-          )
-        })}
-        {pass && (
-          <button className="act end" data-testid="act-pass" onClick={() => take(pass)}>
-            <strong>Pass</strong>
-          </button>
-        )}
-      </section>
-    )
-  }
-  const who = p.uid ? displayName(game.units[p.uid]!.defId) : ''
-  if (p.kind === 'trigger') {
-    const uses = af.legal.filter((a) => a.type === 'trigger')
-    const skip = af.legal.find((a) => a.type === 'trigger_skip')
-    const ab = game.units[p.uid!]!.abilities.find((x) => x.aid === p.aid)
-    return (
-      <section className="panel actions decision" data-testid="decision">
-        <div className="panel-head">{who}: {Text.abilityName(p.aid)}</div>
-        {ab && <p className="hint">{Text.abilityText(ab)}</p>}
-        {uses.map((a) => (
-          <button key={a.targetUid ?? 'self'} className="act ability" data-testid={'act-trigger-' + (a.targetUid ?? 'self')} onClick={() => take(a)}>
-            <strong>{a.targetUid ? 'Use on ' + displayName(game.units[a.targetUid]!.defId) : 'Use it'}</strong>
-          </button>
-        ))}
-        {skip && (
-          <button className="act end" data-testid="act-trigger_skip" onClick={() => take(skip)}>
-            <strong>Decline</strong>
-          </button>
-        )}
-      </section>
-    )
-  }
-  if (p.kind === 'displace') {
-    const stop = af.legal.find((a) => a.type === 'displace_stop')
-    return (
-      <section className="panel actions decision" data-testid="decision">
-        <div className="panel-head">{p.mode === 'pull' ? 'Pull' : 'Push'} {who}</div>
-        <p className="hint">
-          Click a violet hex to move it ({p.left} left). A red hex is a collision: 2 damage to everything involved, and the {p.mode} ends.
-        </p>
-        {stop && (
-          <button className="act end" data-testid="act-displace_stop" onClick={() => take(stop)}>
-            <strong>Stop here</strong>
-          </button>
-        )}
-      </section>
-    )
-  }
-  return (
-    <section className="panel actions decision" data-testid="decision">
-      <div className="panel-head">{who}</div>
-      <p className="hint">{p.kind === 'react_move' ? 'Still standing: click a glowing hex to move, or pass.' : 'Click an enemy to strike back, or pass.'}</p>
-      {pass && (
-        <button className="act end" data-testid="act-pass" onClick={() => take(pass)}>
-          <strong>Pass</strong>
-        </button>
-      )}
-    </section>
-  )
+interface BarItem {
+  key: string
+  label: string
+  sub?: string
+  cls?: string
+  testid?: string
+  /** What the popover explains. Without it a tap runs the item at once. */
+  info?: ReactNode
+  /** The popover's main button (or the tap itself, when there is no info). */
+  run?: () => void
+  runLabel?: string
+  /** Extra popover buttons, one per target. */
+  choices?: { label: string; run: () => void; testid?: string }[]
+  /** Arm-on-tap items: weapons and Attack cards. */
+  arm?: () => void
+  armed?: boolean
+  dim?: boolean
+}
+
+interface BarGroup {
+  label: string
+  items: BarItem[]
 }
 
 /** The attack being responded to: who is attacking, and the dice once they have landed. */
-function RollSoFar({ game }: { game: GameState }) {
+function rollSoFar(game: GameState): string {
   const a = game.attacks && game.attacks[game.attacks.length - 1]
-  if (!a) return null
+  if (!a) return ''
   const attacker = game.units[a.uid]
-  return (
-    <div className="hint" data-testid="roll-so-far">
-      {attacker ? displayName(attacker.defId) + ' is attacking' : 'An attack is under way'}
-      {a.faces ? <> · rolled {a.faces.join(' ')}</> : <> · {a.dice || ''} dice to roll</>}
-      {a.preview && a.preview.length > 0 && (
-        <div>
-          {a.preview.map((t, i) => (
-            <span key={i}>{(t.ref.kind === 'unit' ? displayName(game.units[t.ref.id]!.defId) : 'Garrison') + ': ' + t.hits + ' hit' + (t.hits === 1 ? '' : 's')}{i < a.preview!.length - 1 ? ' · ' : ''}</span>
-          ))}
-        </div>
-      )}
-    </div>
-  )
+  let s = (attacker ? displayName(attacker.defId) + ' is attacking' : 'An attack is under way') + (a.faces ? ' · rolled ' + a.faces.join(' ') : a.dice ? ' · ' + a.dice + ' dice to roll' : '')
+  if (a.preview && a.preview.length) {
+    s += ' · ' + a.preview.map((t) => (t.ref.kind === 'unit' ? displayName(game.units[t.ref.id]!.defId) : 'Garrison') + ': ' + t.hits + ' hit' + (t.hits === 1 ? '' : 's')).join(', ')
+  }
+  return s
 }
 
-function ActionPanel({ game }: { game: GameState }) {
-  const armed = useGame((s) => s.armed)
-  const ai = useGame((s) => s.ai)
-  const af = useAffordances()
-  const act = game.activation
-  if (!act) return null
-  if (game.pending) {
-    const d = deciderSide(game)
-    if (d !== null && !ai[d]) return <DecisionPanel game={game} />
-    return (
-      <section className="panel actions" data-testid="actions">
-        <div className="panel-head">{sideName(d ?? act.side)} is responding</div>
-      </section>
-    )
+/** The head line and buttons for a paused attack or effect waiting on this player. */
+function decisionBar(game: GameState, legal: Action[]): { title: string; hint: string; groups: BarGroup[] } {
+  const p = game.pending!
+  const pass = legal.find((a) => a.type === 'pass')
+  const passItem: BarItem[] = pass ? [{ key: 'pass', label: 'Pass', cls: 'end', testid: 'act-pass', run: () => take(pass) }] : []
+  const who = p.uid ? displayName(game.units[p.uid]!.defId) : ''
+  if (p.kind === 'window') {
+    const hand = game.players[p.side!]!.tactics.hand
+    const cards = legal.filter((a) => a.type === 'respond')
+    return {
+      title: WINDOW_LABEL[p.window!] ?? 'Respond',
+      hint: [rollSoFar(game), 'Play a response card, or pass.'].filter(Boolean).join(' · '),
+      groups: [
+        {
+          label: 'Respond',
+          items: [
+            ...cards.map((a): BarItem => {
+              const c = hand.find((x) => x.cid === a.cid)!
+              const on = a.targetUid ? displayName(game.units[a.targetUid]!.defId) : ''
+              return {
+                key: 'r' + a.cid + (a.targetUid ?? ''),
+                label: Text.tacticsName(a.cid),
+                sub: on || undefined,
+                cls: 'card playable',
+                testid: 'respond-' + a.cid + (a.targetUid ? '-' + a.targetUid : ''),
+                info: Text.abilityText(c),
+                run: () => take(a),
+                runLabel: on ? 'Play on ' + on : 'Play',
+              }
+            }),
+            ...passItem,
+          ],
+        },
+      ],
+    }
   }
-  const u = game.units[act.uid]!
-  const mine = !ai[act.side]
-  if (!mine) {
-    return (
-      <section className="panel actions" data-testid="actions">
-        <div className="panel-head">{sideName(act.side)} is acting</div>
-        <p className="dim">{displayName(u.defId)} is taking its turn.</p>
-      </section>
-    )
+  if (p.kind === 'trigger') {
+    const ab = game.units[p.uid!]!.abilities.find((x) => x.aid === p.aid)
+    const skip = legal.find((a) => a.type === 'trigger_skip')
+    return {
+      title: who + ': ' + Text.abilityName(p.aid),
+      hint: ab ? Text.abilityText(ab) : '',
+      groups: [
+        {
+          label: 'Response',
+          items: [
+            ...legal
+              .filter((a) => a.type === 'trigger')
+              .map((a): BarItem => ({
+                key: 't' + (a.targetUid ?? 'self'),
+                label: a.targetUid ? 'Use on ' + displayName(game.units[a.targetUid]!.defId) : 'Use it',
+                cls: 'ability',
+                testid: 'act-trigger-' + (a.targetUid ?? 'self'),
+                run: () => take(a),
+              })),
+            ...(skip ? [{ key: 'skip', label: 'Decline', cls: 'end', testid: 'act-trigger_skip', run: () => take(skip) }] : []),
+          ],
+        },
+      ],
+    }
   }
-  const legal = af.legal
-  const has = (t: string) => legal.some((a) => a.type === t)
+  if (p.kind === 'displace') {
+    const stop = legal.find((a) => a.type === 'displace_stop')
+    return {
+      title: (p.mode === 'pull' ? 'Pull ' : 'Push ') + who,
+      hint: 'Click a violet hex to move it (' + p.left + ' left). A red hex is a collision: 2 damage to everything involved, and the ' + p.mode + ' ends.',
+      groups: stop ? [{ label: p.mode === 'pull' ? 'Pull' : 'Push', items: [{ key: 'stop', label: 'Stop here', cls: 'end', testid: 'act-displace_stop', run: () => take(stop) }] }] : [],
+    }
+  }
+  return {
+    title: who,
+    hint: p.kind === 'react_move' ? 'Still standing: click a glowing hex to move, or pass.' : 'Click an enemy to strike back, or pass.',
+    groups: passItem.length ? [{ label: 'React', items: passItem }] : [],
+  }
+}
+
+/** The head line and buttons for the acting machine's own turn. */
+function turnBar(game: GameState, u: EngineUnit, legal: Action[], armed: string | null): { title: string; hint: string; groups: BarGroup[] } {
   const one = (t: string) => legal.find((a) => a.type === t)
-  const moves = legal.filter((a) => a.type === 'advance' || a.type === 'dash').length
-  const plain = legal.filter((a) => a.type === 'energize' || a.type === 'rescue' || a.type === 'end_activation')
-  const commands = legal.filter((a) => a.type === 'command')
   const engaged = u.hex ? isEngaged(game, u.side, u.hex) : false
+  const hints: string[] = []
+  if (legal.some((a) => a.type === 'deploy')) hints.push('In reserve: click the glowing hex on your base to deploy, then move off it.')
+  if (u.hex && one('advance')?.slowed) hints.push('Mired: this Advance goes nowhere, but clears the status.')
+  if (engaged) hints.push('Engaged: moves go one hex less, and attacks must include an adjacent enemy.')
+  if (!hints.length && legal.some((a) => a.type === 'advance' || a.type === 'dash')) hints.push('Green hexes are a free Advance; amber hexes are a Dash.')
 
-  return (
-    <section className="panel actions" data-testid="actions">
-      <div className="panel-head">
-        {displayName(u.defId)} <span className="dim">· {roleName(u.defId)}</span>
-      </div>
-      {has('deploy') && <p className="hint">In reserve. Click the glowing hex on your base to deploy, then move off it.</p>}
-      {u.hex && one('advance')?.slowed && <p className="hint">Mired: this Advance goes nowhere, but clears the status.</p>}
-      {engaged && <p className="hint">Engaged: moves go one hex less, and attacks must include an adjacent enemy.</p>}
-      {weaponsOf(u).map((w) => {
-        const shots = legal.filter((a) => a.type === 'attack' && a.wid === w.wid)
-        return (
-          <button
-            key={w.wid}
-            className={'act weapon' + (armed === w.wid ? ' armed' : '')}
-            disabled={!shots.length}
-            data-testid={'weapon-' + w.wid}
-            onClick={() => setStore({ armed: armed === w.wid ? null : w.wid })}
-          >
-            <strong>{displayName(w.wid)}</strong>
-            <span className="dim">
-              {shots[0]?.free ? 'free' : w.tlCost + ' TL'} · range {w.range} · {w.strength} dice{w.ignoreLos ? ' · ignores LoS' : ''}
-            </span>
-            {w.crit && <span className="dim">Crit: {Names.critText(w.crit)}</span>}
-            <span className="dim">{shots.length ? shots.length + ' target' + (shots.length > 1 ? 's' : '') + ' — arm, then click one' : 'no target'}</span>
-          </button>
-        )
-      })}
-      {commands.map((a) => {
-        const def = ability(u, a.aid!)
-        return (
-          <button key={a.aid! + (a.targetUid ?? '')} className="act ability" onClick={() => take(a)}>
-            <strong>{Text.abilityName(a.aid)}</strong>
-            <span className="dim">{Text.abilityCost(def)}</span>
-            <span className="dim">{Text.abilityText(def)}</span>
-            {a.targetUid && <span className="dim">on {displayName(game.units[a.targetUid]!.defId)}</span>}
-          </button>
-        )
-      })}
-      {plain.map((a: Action) => (
-        <button key={a.type + (a.gid ?? '')} className={'act' + (a.type === 'end_activation' ? ' end' : '')} data-testid={'act-' + a.type} onClick={() => take(a)}>
-          <strong>{Names.ACTIONS[a.type] ?? a.type}</strong>
-          <span className="dim">{Names.ACTION_HINTS[a.type] ?? ''}</span>
-        </button>
-      ))}
-      {moves > 0 && <p className="hint">Green hexes are a free Advance; amber hexes are a Dash, which uses your Primary Action.</p>}
-    </section>
-  )
+  const weapons = weaponsOf(u).map((w): BarItem => {
+    const shots = legal.filter((a) => a.type === 'attack' && a.wid === w.wid)
+    return {
+      key: 'w' + w.wid,
+      label: displayName(w.wid),
+      sub: (shots[0]?.free ? 'free' : w.tlCost + ' TL') + ' · ◇' + w.range + ' · ⬢' + w.strength,
+      cls: 'weapon',
+      testid: 'weapon-' + w.wid,
+      dim: !shots.length,
+      armed: armed === w.wid,
+      arm: shots.length ? () => setStore({ armed: armed === w.wid ? null : w.wid }) : undefined,
+      info: (
+        <>
+          <div>
+            {shots[0]?.free ? 'Free' : w.tlCost + ' TL'} · range {w.range} · {w.strength} dice{w.ignoreLos ? ' · ignores line of sight' : ''}
+          </div>
+          {w.crit && <div>Crit: {Names.critText(w.crit)}</div>}
+          <div className="dim">{shots.length ? shots.length + ' target' + (shots.length > 1 ? 's' : '') + ': click one on the board.' : 'No target in range.'}</div>
+        </>
+      ),
+    }
+  })
+
+  const byAid = new Map<string, Action[]>()
+  for (const a of legal.filter((x) => x.type === 'command')) byAid.set(a.aid!, [...(byAid.get(a.aid!) ?? []), a])
+  const commands = [...byAid.entries()].map(([aid, acts]): BarItem => {
+    const def = ability(u, aid)
+    const targeted = acts.length > 1 || Boolean(acts[0]!.targetUid)
+    return {
+      key: 'c' + aid,
+      label: Text.abilityName(aid),
+      sub: Text.abilityCost(def),
+      cls: 'ability',
+      testid: 'cmd-' + aid,
+      info: Text.abilityText(def),
+      run: targeted ? undefined : () => take(acts[0]!),
+      runLabel: 'Use',
+      choices: targeted ? acts.map((a) => ({ label: 'Use on ' + displayName(game.units[a.targetUid!]!.defId), run: () => take(a) })) : undefined,
+    }
+  })
+
+  const plain = legal
+    .filter((a) => a.type === 'energize' || a.type === 'rescue' || a.type === 'end_activation')
+    .map((a): BarItem => ({
+      key: a.type + (a.gid ?? ''),
+      label: Names.ACTIONS[a.type] ?? a.type,
+      cls: a.type === 'end_activation' ? 'end' : '',
+      testid: 'act-' + a.type,
+      info: Names.ACTION_HINTS[a.type] ?? '',
+      run: () => take(a),
+      runLabel: Names.ACTIONS[a.type] ?? 'Use',
+    }))
+
+  return {
+    title: displayName(u.defId) + ' · ' + roleName(u.defId),
+    hint: hints.join(' '),
+    groups: [
+      { label: 'Weapons', items: weapons },
+      ...(commands.length ? [{ label: 'Commands', items: commands }] : []),
+      ...(plain.length ? [{ label: 'Actions', items: plain }] : []),
+    ],
+  }
 }
 
-// --- the hand ------------------------------------------------------------------------------------------------------------
+/** The Tactics hand as bar buttons; a card's text opens on tap, with its Play buttons when it can be played now. */
+function handGroup(game: GameState, side: Side, legal: Action[], armed: string | null, hotseat: boolean): BarGroup {
+  const p = game.players[side]!
+  const items = p.tactics.hand.map((c): BarItem => {
+    const plays = legal.filter((a) => a.type === 'tactics' && a.cid === c.cid)
+    const isAttack = c.timing === 'attack'
+    const key = 'card:' + c.cid
+    const item: BarItem = {
+      key,
+      label: Text.tacticsName(c.cid),
+      cls: 'card' + (plays.length ? ' playable' : ''),
+      testid: 'card-' + c.cid,
+      dim: !plays.length,
+      info: (
+        <>
+          <div>{Text.abilityText(c)}</div>
+          {!plays.length && <div className="dim">Not playable right now.</div>}
+          {isAttack && plays.length > 0 && <div className="dim">Armed: click a target on the board.</div>}
+        </>
+      ),
+    }
+    if (isAttack && plays.length) {
+      item.arm = () => setStore({ armed: armed === key ? null : key })
+      item.armed = armed === key
+    } else if (plays.length === 1) {
+      item.run = () => take(plays[0]!)
+      item.runLabel = 'Play'
+    } else if (plays.length > 1) {
+      item.choices = plays.map((a) => ({ label: 'Play on ' + displayName(game.units[a.targetUid!]!.defId), run: () => take(a) }))
+    }
+    return item
+  })
+  return { label: (hotseat ? sideName(side) + ' ' : '') + 'Tactics ' + p.tactics.hand.length + '·' + p.tactics.deck.length, items }
+}
 
-function Hand({ game }: { game: GameState }) {
-  const ai = useGame((s) => s.ai)
+function ActionBar({ game }: { game: GameState }) {
   const armed = useGame((s) => s.armed)
+  const ai = useGame((s) => s.ai)
   const af = useAffordances()
-  // the human's hand; in hotseat, the hand of whoever must act now
+  const [barOpen, toggleBar] = useFold('actions', true)
+  const [openKey, setOpenKey] = useState<string | null>(null)
+  // a new state closes any open description
+  useEffect(() => setOpenKey(null), [game])
+
+  const act = game.activation
   const hotseat = !ai[0] && !ai[1]
   const d = deciderSide(game)
-  const side: Side = hotseat && d !== null ? d : ai[0] && !ai[1] ? 1 : 0
-  if (ai[0] && ai[1]) return null
-  const p = game.players[side]!
+  const handSide: Side = hotseat && d !== null ? d : ai[0] && !ai[1] ? 1 : 0
+  const spectating = ai[0] && ai[1]
+
+  let title = ''
+  let hint = ''
+  let groups: BarGroup[] = []
+  let deciding = false
+  if (act && game.pending && d !== null && !ai[d]) {
+    ;({ title, hint, groups } = decisionBar(game, af.legal))
+    deciding = true
+  } else if (act && game.pending) {
+    title = sideName(d ?? act.side) + ' is responding'
+  } else if (act && !ai[act.side]) {
+    ;({ title, hint, groups } = turnBar(game, game.units[act.uid]!, af.legal, armed))
+  } else if (act) {
+    title = sideName(act.side) + ' is acting'
+    hint = displayName(game.units[act.uid]!.defId) + ' is taking its turn.'
+  }
+  if (!spectating && (!deciding || game.pending?.kind !== 'window')) groups = [...groups, handGroup(game, handSide, af.legal, armed, hotseat)]
+  if (!title && !groups.length) return null
+
+  const all = groups.flatMap((g) => g.items)
+  const pop = all.find((i) => i.key === openKey) ?? null
+  const tap = (i: BarItem) => {
+    if (i.arm) {
+      i.arm()
+      setOpenKey(i.armed ? null : i.key)
+    } else if (i.info) {
+      setOpenKey(openKey === i.key ? null : i.key)
+    } else if (i.run) {
+      i.run()
+    }
+  }
+  const runAndClose = (fn: () => void) => {
+    setOpenKey(null)
+    fn()
+  }
+
   return (
-    <section className="hand" data-testid="hand">
-      <div className="hand-head">
-        {hotseat ? sideName(side) + ' · ' : ''}Tactics · {p.tactics.hand.length} in hand, {p.tactics.deck.length} in deck
-      </div>
-      <div className="cards">
-        {p.tactics.hand.map((c) => {
-          const plays = af.legal.filter((a) => a.type === 'tactics' && a.cid === c.cid)
-          const isAttack = c.timing === 'attack'
-          const onClick = () => {
-            if (!plays.length) return
-            // an Attack card arms like a weapon: then click a target on the board
-            if (isAttack) setStore({ armed: armed === 'card:' + c.cid ? null : 'card:' + c.cid })
-            else if (plays.length === 1) take(plays[0]!)
-          }
-          return (
-            <div key={c.cid} className={'tcard' + (plays.length ? ' playable' : '') + (armed === 'card:' + c.cid ? ' armed' : '')} data-testid={'card-' + c.cid} onClick={onClick}>
-              <div className="tcard-name">{Text.tacticsName(c.cid)}</div>
-              <div className="tcard-text">{Text.abilityText(c)}</div>
-              {!isAttack && plays.length > 1 && (
-                <div className="tcard-targets">
-                  {plays.map((a) => (
-                    <button key={a.targetUid} onClick={(e) => { e.stopPropagation(); take(a) }}>
-                      {displayName(game.units[a.targetUid!]!.defId)}
-                    </button>
-                  ))}
-                </div>
+    <section className={'actionbar' + (deciding ? ' deciding' : '') + (barOpen ? '' : ' closed')} data-testid={deciding ? 'decision' : 'actions'}>
+      {pop && barOpen && (
+        <div className="bar-pop" data-testid="act-pop">
+          <div className="pop-head">
+            <strong>{pop.label}</strong>
+            {pop.sub && <span className="dim"> · {pop.sub}</span>}
+            <button className="pop-close" onClick={() => setOpenKey(null)} title="Close">×</button>
+          </div>
+          <div className="pop-body">{pop.info}</div>
+          {(pop.run || pop.choices) && (
+            <div className="pop-actions">
+              {pop.run && (
+                <button className="setup-go" data-testid="act-confirm" onClick={() => runAndClose(pop.run!)}>
+                  {pop.runLabel ?? 'Use'}
+                </button>
               )}
+              {pop.choices?.map((c, i) => (
+                <button key={i} className="setup-go" data-testid={c.testid ?? 'act-choice-' + i} onClick={() => runAndClose(c.run)}>
+                  {c.label}
+                </button>
+              ))}
             </div>
-          )
-        })}
-        {!p.tactics.hand.length && <div className="dim">No cards in hand. Three more are drawn at the end of Phase 1.</div>}
-      </div>
+          )}
+        </div>
+      )}
+      <button className="fold-head bar-head" onClick={toggleBar} aria-expanded={barOpen} title={barOpen ? 'Minimize' : 'Expand'} data-testid="actions-fold">
+        <span className="fold-title">
+          {title}
+          {hint && barOpen && <span className="bar-hint"> {hint}</span>}
+        </span>
+        <span className="fold-icon">{barOpen ? '–' : '+'}</span>
+      </button>
+      {barOpen && groups.some((g) => g.items.length) && (
+        <div className="bar-row">
+          {groups
+            .filter((g) => g.items.length)
+            .map((g) => (
+              <div key={g.label} className="bar-group">
+                <span className="bar-label">{g.label}</span>
+                {g.items.map((i) => (
+                  <button
+                    key={i.key}
+                    className={'bbtn ' + (i.cls ?? '') + (i.dim ? ' dimmed' : '') + (i.armed ? ' armed' : '') + (openKey === i.key ? ' open' : '')}
+                    data-testid={i.testid}
+                    onClick={() => tap(i)}
+                  >
+                    <strong>{i.label}</strong>
+                    {i.sub && <span className="sub">{i.sub}</span>}
+                  </button>
+                ))}
+              </div>
+            ))}
+        </div>
+      )}
     </section>
   )
 }
@@ -379,8 +529,7 @@ function Hand({ game }: { game: GameState }) {
 
 function UnitCard({ game, u }: { game: GameState; u: EngineUnit }) {
   return (
-    <section className={'panel ucard ' + SIDE_CLASS[u.side]} data-testid="unit-card">
-      <div className="ucard-name">{displayName(u.defId)}</div>
+    <Fold id="unit" className={'ucard ' + SIDE_CLASS[u.side]} testid="unit-card" defaultOpen={!isNarrow()} title={displayName(u.defId)}>
       <div className="dim">{roleName(u.defId)} · {sideName(u.side)}{u.inReserve ? ' · in reserve' : ''}</div>
       <div className="ucard-stats">
         <span><em>{UI.hp}</em>{u.hp}/{u.maxHp}</span>
@@ -410,7 +559,7 @@ function UnitCard({ game, u }: { game: GameState; u: EngineUnit }) {
           {u.upgrades.map((s, i) => <span key={s + i} className="chip-u">{Names.UPGRADES[s] ?? s}</span>)}
         </div>
       )}
-    </section>
+    </Fold>
   )
 }
 
@@ -444,14 +593,14 @@ function HexInfo({ game }: { game: GameState }) {
 
 function Feed({ game }: { game: GameState }) {
   const lines: string[] = []
-  for (let i = game.log.length - 1; i >= 0 && lines.length < 5; i--) {
+  for (let i = game.log.length - 1; i >= 0 && lines.length < 4; i--) {
     const d = describe(game, game.log[i]!)
     if (d) lines.push(d)
   }
   return (
-    <div className="feed" data-testid="feed">
-      {lines.reverse().map((l, i) => <div key={i}>{l}</div>)}
-    </div>
+    <Fold id="feed" className="feed" testid="feed" title={<span className="dim">{lines.length ? lines[0] : 'Log'}</span>}>
+      {lines.slice(1).reverse().map((l, i) => <div key={i}>{l}</div>)}
+    </Fold>
   )
 }
 
@@ -497,14 +646,10 @@ export function Hud() {
     <>
       <TopBar game={game} />
       <Track game={game} />
-      <div className="rightcol">
-        <ActionPanel game={game} />
-        {/* the hand sits in the right column so a phone can scroll to it; on a desktop CSS pins it along the bottom */}
-        <Hand game={game} />
-        {cardUnit && <UnitCard game={game} u={cardUnit} />}
-      </div>
-      <HexInfo game={game} />
       <Feed game={game} />
+      <div className="rightcol">{cardUnit && <UnitCard game={game} u={cardUnit} />}</div>
+      <ActionBar game={game} />
+      <HexInfo game={game} />
       <Banner />
       {isTerminal(game) && <GameOver game={game} />}
     </>

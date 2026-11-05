@@ -15,10 +15,11 @@ export interface Insets {
   bottom: number
 }
 
-/** Pixels of the window the HUD leaves for the board: the Timeline column, the action column, the top bar and the hand. */
+/** Pixels of the window the HUD leaves for the board: the Timeline column, the unit card, the top bar and the action bar. */
 export function insetsFor(width: number, height: number): Insets {
-  if (width >= 900) return { left: 132, right: 300, top: 56, bottom: 150 }
-  return { left: 6, right: 6, top: 96, bottom: Math.round(height * 0.4) }
+  if (width >= 900) return { left: 132, right: 300, top: 56, bottom: 96 }
+  // narrow: the Timeline column on the left, the folded panels along the top, the action bar along the bottom
+  return { left: 88, right: 6, top: 86, bottom: Math.min(84, Math.round(height * 0.25)) }
 }
 
 /** The human player sits at the left edge (side 0's Base), so the overview looks across the board from there. */

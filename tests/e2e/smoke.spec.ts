@@ -68,9 +68,13 @@ test('setup, deploy and move with real clicks on the board', async ({ page }) =>
   const moved = await page.evaluate((u) => window.__game!.state()!.units[u]!.hex, uid)
   expect(moved).toEqual(to)
 
-  // the action panel offers the rest of the turn; end it with Energize then End turn
+  // the action bar offers the rest of the turn: a tap opens a button's description, its Use button acts
   await page.getByTestId('act-energize').click()
+  await expect(page.getByTestId('act-pop')).toBeVisible()
+  await page.screenshot({ path: 'e2e-out/m2-bar-pop.png' })
+  await page.getByTestId('act-confirm').click()
   await page.getByTestId('act-end_activation').click()
+  await page.getByTestId('act-confirm').click()
   await page.waitForTimeout(800)
   await page.screenshot({ path: 'e2e-out/m2-after-turn.png' })
 
@@ -103,4 +107,22 @@ test('a whole AI-vs-AI game plays through the client', async ({ page }) => {
   const vp = await page.evaluate(() => window.__game!.state()!.players.map((p) => p.vp))
   expect(vp[0]! + vp[1]!).toBeGreaterThan(0)
   expect(errors).toEqual([])
+})
+
+test('the HUD fits a phone in landscape, and every panel folds', async ({ page }) => {
+  await page.setViewportSize({ width: 844, height: 390 })
+  await page.goto('./?team=t_lance&foe=t_hammer&seed=e2e-phone&auto=1')
+  await page.waitForFunction(() => window.__game?.state() !== null && !window.__game!.busy() && window.__game!.legal().some((a) => a.type === 'deploy'), null, { timeout: 30_000 })
+  await page.waitForTimeout(600)
+  await page.screenshot({ path: 'e2e-out/phone-open.png' })
+  // the Timeline is a column, not a strip across the board
+  const track = await page.getByTestId('track').boundingBox()
+  expect(track!.width).toBeLessThan(120)
+  // every panel minimizes to its header line
+  for (const id of ['track', 'feed', 'actions']) await page.getByTestId(id + '-fold').click()
+  await page.waitForTimeout(300)
+  await page.screenshot({ path: 'e2e-out/phone-folded.png' })
+  const bar = await page.getByTestId('actions').boundingBox()
+  expect(bar!.height).toBeLessThan(44)
+  for (const id of ['track', 'feed', 'actions']) await page.getByTestId(id + '-fold').click()
 })
