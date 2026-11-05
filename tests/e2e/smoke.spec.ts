@@ -73,13 +73,19 @@ test('setup, deploy and move with real clicks on the board', async ({ page }) =>
   const moved = await page.evaluate((u) => window.__game!.state()!.units[u]!.hex, uid)
   expect(moved).toEqual(to)
 
-  // the action bar offers the rest of the turn: a tap opens a button's description, its Use button acts
+  // the action bar offers the rest of the turn: a tap opens a button's description, a second tap on it confirms
   await page.getByTestId('act-energize').click()
   await expect(page.getByTestId('act-pop')).toBeVisible()
+  await expect(page.getByTestId('act-confirm-hint')).toBeVisible()
+  await expect(page.getByTestId('act-pop').locator('button.setup-go')).toHaveCount(0)
   await page.screenshot({ path: 'e2e-out/m2-bar-pop.png' })
-  await page.getByTestId('act-confirm').click()
+  const energyBefore = await page.evaluate((u) => window.__game!.state()!.units[u]!.energy, uid)
+  await page.getByTestId('act-energize').click()
+  await page.waitForFunction(() => !window.__game!.busy() && !window.__game!.legal().some((a) => a.type === 'energize'))
+  expect(await page.evaluate((u) => window.__game!.state()!.units[u]!.energy, uid)).toBeGreaterThan(energyBefore)
   await page.getByTestId('act-end_activation').click()
-  await page.getByTestId('act-confirm').click()
+  await page.getByTestId('act-end_activation').click()
+  await page.waitForFunction((u) => window.__game!.state()!.activation?.uid !== u, uid)
   await page.waitForTimeout(800)
   await page.screenshot({ path: 'e2e-out/m2-after-turn.png' })
 
@@ -134,6 +140,19 @@ test('the HUD fits a phone in landscape, and every panel folds', async ({ page }
   expect(await page.evaluate(() => getComputedStyle(document.body).userSelect)).toBe('none')
   await page.getByTestId('feed').click({ clickCount: 3 })
   expect(await page.evaluate(() => window.getSelection()?.toString() ?? '')).toBe('')
+})
+
+test.describe('touch tablet', () => {
+  test.use({ viewport: { width: 1024, height: 768 }, hasTouch: true, isMobile: true })
+  test('the action bar sits clear of the home bar', async ({ page }) => {
+    await page.goto('./?team=t_lance&foe=t_hammer&seed=e2e-tablet&auto=1')
+    await page.waitForFunction(() => window.__game?.state() !== null && !window.__game!.busy() && window.__game!.legal().some((a) => a.type === 'deploy'), null, { timeout: 30_000 })
+    expect(await page.evaluate(() => matchMedia('(pointer: coarse)').matches)).toBe(true)
+    await page.waitForTimeout(600)
+    const bar = await page.getByTestId('actions').boundingBox()
+    expect(768 - (bar!.y + bar!.height)).toBeGreaterThanOrEqual(26)
+    await page.screenshot({ path: 'e2e-out/tablet-bar.png' })
+  })
 })
 
 test('a deploying machine flies in from behind its Base', async ({ page }) => {

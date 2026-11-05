@@ -16,10 +16,21 @@ export interface Insets {
 }
 
 /** Pixels of the window the HUD leaves for the board: the Timeline column, the unit card, the top bar and the action bar. */
-export function insetsFor(width: number, height: number): Insets {
-  if (width >= 900) return { left: 132, right: 300, top: 56, bottom: 96 }
+export function insetsFor(width: number, height: number, lift = 0): Insets {
+  if (width >= 900) return { left: 132, right: 300, top: 56, bottom: 96 + lift }
   // narrow: the Timeline column on the left, the folded panels along the top, the action bar along the bottom
-  return { left: 88, right: 6, top: 86, bottom: Math.min(84, Math.round(height * 0.25)) }
+  return { left: 88, right: 6, top: 86, bottom: Math.min(84, Math.round(height * 0.25)) + lift }
+}
+
+/** How far the action bar sits above the bottom edge on a touch screen, clear of the iPad and iPhone home bar (theme.css). */
+export const TOUCH_LIFT = 22
+
+function touchLift(): number {
+  try {
+    return window.matchMedia('(pointer: coarse)').matches ? TOUCH_LIFT : 0
+  } catch {
+    return 0
+  }
 }
 
 /** The human player sits at the left edge (side 0's Base), so the overview looks across the board from there. */
@@ -86,7 +97,7 @@ export function CameraRig({ frame, surface }: { frame: Frame; surface: (x: numbe
   // fit on every resize; a new board starts from the overview
   useEffect(() => {
     const cam = camera as PerspectiveCamera
-    const ins = insetsFor(size.width, size.height)
+    const ins = insetsFor(size.width, size.height, touchLift())
     const fit = fitBoard(cam.fov, size.width, size.height, ins, HOME_AZ, frame)
     const freeW = Math.max(120, size.width - ins.left - ins.right)
     const freeH = Math.max(120, size.height - ins.top - ins.bottom)

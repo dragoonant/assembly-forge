@@ -203,14 +203,17 @@ interface BarItem {
   testid?: string
   /** What the popover explains. Without it a tap runs the item at once. */
   info?: ReactNode
-  /** The popover's main button (or the tap itself, when there is no info). */
+  /** What a second tap on the open button does (or the first tap, when there is no info). */
   run?: () => void
   runLabel?: string
-  /** Extra popover buttons, one per target. */
-  choices?: { label: string; run: () => void; testid?: string }[]
-  /** Arm-on-tap items: weapons and Attack cards. */
+  /** One play per target: a tap on the target's hex takes it (a second tap on the button does, when there is only one). */
+  choices?: { label: string; run: () => void; act: Action; testid?: string }[]
+  /** Arm-on-tap items (weapons and Attack cards): a tap arms, a tap on an enemy attacks. */
   arm?: () => void
   armed?: boolean
+  /** For an armed item with a single target: a second tap attacks it. */
+  quick?: () => void
+  quickLabel?: string
   dim?: boolean
 }
 
@@ -229,6 +232,14 @@ function rollSoFar(game: GameState): string {
     s += ' · ' + a.preview.map((t) => (t.ref.kind === 'unit' ? displayName(game.units[t.ref.id]!.defId) : 'Garrison') + ': ' + t.hits + ' hit' + (t.hits === 1 ? '' : 's')).join(', ')
   }
   return s
+}
+
+/** Who an attack or targeted play is aimed at, for the popover's "tap again" line. */
+function targetName(game: GameState, a: Action): string {
+  const t = a.target
+  if (t && t.kind === 'unit') return displayName(game.units[t.id]!.defId)
+  if (t) return 'the Garrison'
+  return a.targetUid ? displayName(game.units[a.targetUid]!.defId) : 'it'
 }
 
 /** The head line and buttons for a paused attack or effect waiting on this player. */
@@ -332,7 +343,9 @@ function turnBar(game: GameState, u: EngineUnit, legal: Action[], armed: string 
       testid: 'weapon-' + w.wid,
       dim: !shots.length,
       armed: armed === w.wid,
-      arm: shots.length ? () => setStore({ armed: armed === w.wid ? null : w.wid }) : undefined,
+      arm: shots.length ? () => setStore({ armed: w.wid }) : undefined,
+      quick: shots.length === 1 ? () => take(shots[0]!) : undefined,
+      quickLabel: shots.length === 1 ? 'attack ' + targetName(game, shots[0]!) : undefined,
       info: (
         <>
           <div>
@@ -341,7 +354,9 @@ function turnBar(game: GameState, u: EngineUnit, legal: Action[], armed: string 
           {w.crit && <div>Crit: {Names.critText(w.crit)}</div>}
           <div className="dim">
             {shots.length
-              ? shots.length + ' target' + (shots.length > 1 ? 's' : '') + ': click one on the board.'
+              ? shots.length === 1
+                ? 'One target in range.'
+                : shots.length + ' targets: tap one on the board.'
               : spent
                 ? 'Not this activation: its Primary Action went on ' + spentName + ', and an attack is a Primary Action too.'
                 : engaged
@@ -367,7 +382,7 @@ function turnBar(game: GameState, u: EngineUnit, legal: Action[], armed: string 
       info: Text.abilityText(def),
       run: targeted ? undefined : () => take(acts[0]!),
       runLabel: 'Use',
-      choices: targeted ? acts.map((a) => ({ label: 'Use on ' + displayName(game.units[a.targetUid!]!.defId), run: () => take(a) })) : undefined,
+      choices: targeted ? acts.map((a) => ({ label: 'Use on ' + displayName(game.units[a.targetUid!]!.defId), run: () => take(a), act: a })) : undefined,
     }
   })
 
@@ -411,22 +426,44 @@ function handGroup(game: GameState, side: Side, legal: Action[], armed: string |
         <>
           <div>{Text.abilityText(c)}</div>
           {!plays.length && <div className="dim">Not playable right now.</div>}
-          {isAttack && plays.length > 0 && <div className="dim">Armed: click a target on the board.</div>}
+          {isAttack && plays.length > 0 && <div className="dim">Armed: tap a target on the board.</div>}
         </>
       ),
     }
     if (isAttack && plays.length) {
-      item.arm = () => setStore({ armed: armed === key ? null : key })
+      item.arm = () => setStore({ armed: key })
       item.armed = armed === key
+      if (plays.length === 1) {
+        item.quick = () => take(plays[0]!)
+        item.quickLabel = 'play it on ' + targetName(game, plays[0]!)
+      }
     } else if (plays.length === 1) {
       item.run = () => take(plays[0]!)
       item.runLabel = 'Play'
     } else if (plays.length > 1) {
-      item.choices = plays.map((a) => ({ label: 'Play on ' + displayName(game.units[a.targetUid!]!.defId), run: () => take(a) }))
+      item.choices = plays.map((a) => ({ label: 'Play on ' + displayName(game.units[a.targetUid!]!.defId), run: () => take(a), act: a }))
     }
     return item
   })
   return { label: (hotseat ? sideName(side) + ' ' : '') + 'Tactics ' + p.tactics.hand.length + '·' + p.tactics.deck.length, items }
+}
+
+/** What a second tap on an open button does: run it, attack its only target, or play its only choice. */
+function confirmOf(i: BarItem): (() => void) | null {
+  return i.quick ?? i.run ?? (i.choices && i.choices.length === 1 ? i.choices[0]!.run : null)
+}
+
+function confirmLabel(i: BarItem): string {
+  if (i.quick) return i.quickLabel ?? 'attack'
+  const lower = (t: string) => t.charAt(0).toLowerCase() + t.slice(1)
+  if (i.run) return lower(i.runLabel ?? 'use')
+  return i.choices && i.choices.length === 1 ? lower(i.choices[0]!.label) : ''
+}
+
+/** A targeted choice whose target stands on the board, so a tap on its hex can take it. */
+function onBoard(game: GameState, c: { act: Action }): boolean {
+  const uid = c.act.targetUid
+  return Boolean(uid && game.units[uid]?.hex)
 }
 
 function ActionBar({ game }: { game: GameState }) {
@@ -434,9 +471,9 @@ function ActionBar({ game }: { game: GameState }) {
   const ai = useGame((s) => s.ai)
   const af = useAffordances()
   const [barOpen, toggleBar] = useFold('actions', true)
-  const [openKey, setOpenKey] = useState<string | null>(null)
-  // a new state closes any open description
-  useEffect(() => setOpenKey(null), [game])
+  // the open button lives in the store, so a tap on the board can close it (game.ts clears it on every new state)
+  const openKey = useGame((s) => s.openItem)
+  const setOpenKey = (k: string | null) => setStore({ openItem: k })
 
   const act = game.activation
   const hotseat = !ai[0] && !ai[1]
@@ -460,24 +497,34 @@ function ActionBar({ game }: { game: GameState }) {
     hint = displayName(game.units[act.uid]!.defId) + ' is taking its turn.'
   }
   if (!spectating && (!deciding || game.pending?.kind !== 'window')) groups = [...groups, handGroup(game, handSide, af.legal, armed, hotseat)]
+  const popNow = groups.flatMap((g) => g.items).find((i) => i.key === openKey) ?? null
+  const pickKey = popNow && popNow.choices ? popNow.key + '|' + popNow.choices.length : null
+  useEffect(() => {
+    setStore({ picks: popNow && popNow.choices ? popNow.choices.filter((c) => onBoard(game, c)).map((c) => c.act) : null })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pickKey, game])
   if (!title && !groups.length) return null
 
   const all = groups.flatMap((g) => g.items)
   const pop = all.find((i) => i.key === openKey) ?? null
   const tap = (i: BarItem) => {
+    if (openKey === i.key) {
+      // the second tap confirms; with nothing to confirm it closes (and disarms)
+      const go = i.armed || !i.arm ? confirmOf(i) : null
+      setStore({ openItem: null, picks: null, ...(i.arm ? { armed: null } : {}) })
+      if (go) go()
+      return
+    }
     if (i.arm) {
       i.arm()
-      setOpenKey(i.armed ? null : i.key)
+      setOpenKey(i.key)
     } else if (i.info) {
-      setOpenKey(openKey === i.key ? null : i.key)
+      setStore({ openItem: i.key, ...(armed ? { armed: null } : {}) })
     } else if (i.run) {
       i.run()
     }
   }
-  const runAndClose = (fn: () => void) => {
-    setOpenKey(null)
-    fn()
-  }
+  const confirm = pop ? confirmOf(pop) : null
 
   return (
     <section className={'actionbar' + (deciding ? ' deciding' : '') + (barOpen ? '' : ' closed')} data-testid={deciding ? 'decision' : 'actions'}>
@@ -489,18 +536,40 @@ function ActionBar({ game }: { game: GameState }) {
             <button className="pop-close" onClick={() => setOpenKey(null)} title="Close">×</button>
           </div>
           <div className="pop-body">{pop.info}</div>
-          {(pop.run || pop.choices) && (
+          {pop.choices && pop.choices.length > 1 && (
+            <div className="pop-confirm">
+              Tap a highlighted machine on the board:{' '}
+              {pop.choices
+                .filter((c) => onBoard(game, c))
+                .map((c) => c.label.replace(/^(Use|Play) on /, ''))
+                .join(', ')}
+              .
+            </div>
+          )}
+          {confirm && (
+            <div className="pop-confirm" data-testid="act-confirm-hint">
+              {pop.quick || (pop.choices && pop.choices.length === 1) ? 'Tap the target, or tap ' : 'Tap '}
+              <strong>{pop.label}</strong> again to {confirmLabel(pop)}.
+            </div>
+          )}
+          {/* a target still in reserve has no hex to tap: it keeps a button */}
+          {pop.choices && pop.choices.some((c) => !onBoard(game, c)) && (
             <div className="pop-actions">
-              {pop.run && (
-                <button className="setup-go" data-testid="act-confirm" onClick={() => runAndClose(pop.run!)}>
-                  {pop.runLabel ?? 'Use'}
-                </button>
+              {pop.choices.map((c, i) =>
+                onBoard(game, c) ? null : (
+                  <button
+                    key={i}
+                    className="setup-go"
+                    data-testid={c.testid ?? 'act-choice-' + i}
+                    onClick={() => {
+                      setOpenKey(null)
+                      c.run()
+                    }}
+                  >
+                    {c.label}
+                  </button>
+                ),
               )}
-              {pop.choices?.map((c, i) => (
-                <button key={i} className="setup-go" data-testid={c.testid ?? 'act-choice-' + i} onClick={() => runAndClose(c.run)}>
-                  {c.label}
-                </button>
-              ))}
             </div>
           )}
         </div>
@@ -522,12 +591,12 @@ function ActionBar({ game }: { game: GameState }) {
                 {g.items.map((i) => (
                   <button
                     key={i.key}
-                    className={'bbtn ' + (i.cls ?? '') + (i.dim ? ' dimmed' : '') + (i.armed ? ' armed' : '') + (openKey === i.key ? ' open' : '')}
+                    className={'bbtn ' + (i.cls ?? '') + (i.dim ? ' dimmed' : '') + (i.armed ? ' armed' : '') + (openKey === i.key ? ' open' : '') + (openKey === i.key && confirm ? ' confirm' : '')}
                     data-testid={i.testid}
                     onClick={() => tap(i)}
                   >
                     <strong>{i.label}</strong>
-                    {i.sub && <span className="sub">{i.sub}</span>}
+                    {openKey === i.key && confirm ? <span className="sub">tap to {confirmLabel(i)}</span> : i.sub && <span className="sub">{i.sub}</span>}
                   </button>
                 ))}
               </div>

@@ -26,8 +26,11 @@ pushed). The owner reviews the set next.**
 - The HUD (reworked 2026-11-04 from the owner's phone screenshot): top bar (score, Phase and round, opponent speed, reset
   view, new game); the Timeline as a vertical column at every size; the log and the unit card as panels that minimize to
   one line (remembered per browser; the unit card starts minimized on narrow screens); and an action bar of small buttons
-  along the bottom (weapons, Commands, actions, then the Tactics hand). A tap opens a button's description above the bar
-  with its Use or Play button; a weapon or Attack card arms on the tap. The bar folds to one line too. The dice panel and
+  along the bottom (weapons, Commands, actions, then the Tactics hand). A tap opens a button's description above the bar,
+  and a second tap on the same button confirms it (owner, 2026-11-04: no confirm button in the description). A weapon or
+  Attack card arms on the first tap; a tap on an enemy attacks, or a second tap does when there is one target. A
+  targeted Command or card rings its targets in cyan, and a tap on one plays it. On a touch screen the bar sits 28px up,
+  clear of the iPad and iPhone home bar. The bar folds to one line too. The dice panel and
   the game-over panel are unchanged.
 - The presentation director (`src/client/presentation/`): every action's new log entries become blocking beats (a walk
   along the engine's path with a hop on level changes, a drop onto the Base on deploy, a turn and a tracer or a lunge for a

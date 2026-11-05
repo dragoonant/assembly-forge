@@ -106,6 +106,9 @@ button:disabled { opacity: 0.45; cursor: default; }
 .pop-close { margin-left: auto; padding: 0 8px; line-height: 20px; }
 .pop-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
 .pop-actions button { padding: 5px 12px; }
+.pop-confirm { color: var(--amber); font-size: 12px; }
+.bbtn.confirm { border-color: var(--amber); background: #3a2c10; }
+.bbtn.confirm .sub { color: var(--amber); }
 
 /* hovered hex */
 .hexinfo { position: absolute; left: 50%; transform: translateX(-50%); bottom: 96px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; font-size: 12px; pointer-events: none; white-space: nowrap; max-width: 90vw; overflow: hidden; text-overflow: ellipsis; }
@@ -177,4 +180,14 @@ button:disabled { opacity: 0.45; cursor: default; }
   .topbar .tools .speed { display: none; }
   .topbar { gap: 10px; }
   .topbar .clock { display: none; }
+}
+
+/* touch screens: lift the action bar (and what sits on it) clear of the home bar along the bottom edge of an iPad or iPhone.
+   22px matches TOUCH_LIFT in board/CameraRig.tsx; a page shown edge to edge also gets the reported safe area. */
+@media (pointer: coarse) {
+  .actionbar { bottom: max(28px, calc(env(safe-area-inset-bottom, 0px) + 10px)); }
+  .hexinfo { bottom: 118px; }
+}
+@media (pointer: coarse) and (max-width: 899px) {
+  .hexinfo { bottom: 106px; }
 }

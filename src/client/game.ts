@@ -22,7 +22,7 @@ function stopAI(): void {
 }
 
 function commit(next: GameState): void {
-  setStore((s) => ({ game: next, rev: s.rev + 1, dice: null, armed: null }))
+  setStore((s) => ({ game: next, rev: s.rev + 1, dice: null, armed: null, openItem: null, picks: null }))
 }
 
 /** Back to squad select. */
@@ -31,7 +31,7 @@ export function newGame(): void {
   epoch++
   diceDone = null
   clearEffects()
-  setStore({ screen: 'select', myTeam: null, foeTeam: null, myDeck: null, game: null, armed: null, selected: null, busy: false, dice: null })
+  setStore({ screen: 'select', myTeam: null, foeTeam: null, myDeck: null, game: null, armed: null, openItem: null, picks: null, selected: null, busy: false, dice: null })
   battleMusic(false)
   music(true)
 }
@@ -72,7 +72,7 @@ export function deploy(seed?: string): void {
   music(false)
   battleMusic(true)
   const game = newSkirmish(seed ?? 'game-' + Date.now(), myTeam ?? undefined, foeTeam ?? undefined, [myDeck, null])
-  setStore((s) => ({ screen: 'play', game, rev: s.rev + 1, armed: null, selected: null, busy: false, dice: null }))
+  setStore((s) => ({ screen: 'play', game, rev: s.rev + 1, armed: null, openItem: null, picks: null, selected: null, busy: false, dice: null }))
   // the opening banner and anything else the setup logged
   const opening = plan(game, game, game.log)
   runEffects(opening.effects.filter((e) => e.kind === 'banner'), game, 0)
@@ -122,7 +122,7 @@ async function perform(action: Action, byAI: boolean): Promise<number> {
   const next = apply(game, action)
   const entries = newEntries(game, next)
   const p = plan(game, next, entries)
-  setStore({ busy: true, armed: null })
+  setStore({ busy: true, armed: null, openItem: null, picks: null })
   await runBeats(p.beats)
   // dice whenever this step completed an attack, whatever kind of action finished it (a response, a pass)
   if (entries.some((e) => e.t === 'attack')) await showDice(next, byAI)

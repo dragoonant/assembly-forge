@@ -1,7 +1,7 @@
 // Client state. The engine state is the truth; everything else here is interface state (what is armed, selected, hovered,
 // which screen is up). Components read it with `useGame`, and the controller in game.ts is the only writer of `game`.
 import { create } from 'zustand'
-import type { Axial, GameState, LogEntry, Side } from './engine'
+import type { Action, Axial, GameState, LogEntry, Side } from './engine'
 import type { Beat } from './presentation/plan'
 
 export type Screen = 'select' | 'brief' | 'play'
@@ -24,6 +24,10 @@ export interface GameStore {
   game: GameState | null
   /** The weapon the player has picked and is choosing a target for. */
   armed: string | null
+  /** The action-bar button whose description is open (a second tap on it confirms). */
+  openItem: string | null
+  /** Targeted plays waiting on a tap: the open button's choices, one per target unit. A tap on that unit's hex takes it. */
+  picks: Action[] | null
   /** The unit whose card is pinned open. */
   selected: string | null
   /** The unit under the pointer, for the hover card. */
@@ -61,6 +65,8 @@ export const useGame = create<GameStore>(() => ({
   myDeck: null,
   game: null,
   armed: null,
+  openItem: null,
+  picks: null,
   selected: null,
   hoverUnit: null,
   hoverHex: null,

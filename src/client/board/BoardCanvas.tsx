@@ -6,7 +6,7 @@ import { Canvas, useFrame, type ThreeEvent } from '@react-three/fiber'
 import { useLayoutEffect, useMemo, useRef } from 'react'
 import { BufferGeometry, Color, Float32BufferAttribute, MeshStandardMaterial, Object3D, RepeatWrapping, SRGBColorSpace, type Group, type InstancedMesh, type Texture } from 'three'
 import { actionForHex, affordances, hexKey } from '../affordances'
-import { cellsOf, losTrace, unitAt, weaponsOf, type Axial, type GameState } from '../engine'
+import { cellsOf, losTrace, unitAt, weaponsOf, type Action, type Axial, type GameState } from '../engine'
 import { humanTurn, take } from '../game'
 import { setStore, useGame } from '../store'
 import { CameraRig } from './CameraRig'
@@ -42,7 +42,7 @@ const TEXTURE_SPAN = 2.6
 const textureUrl = (name: string): string => import.meta.env.BASE_URL + 'assets/textures/' + name + '.jpg'
 const skinOf = (cell: Cell): string => (cell.terrain === 'open' ? (cell.elevation > 0 ? 'raised' : 'open') : SKINS[cell.terrain] ? cell.terrain : 'open')
 const GAP = 0.94 // highlight rings sit a hair inside the hex
-const HL = { move: '#5fd17a', dash: '#f0a830', deploy: '#7fd4ff', shoot: '#ff3b30', hover: '#ffffff', push: '#c58cff' } as const
+const HL = { move: '#5fd17a', dash: '#f0a830', deploy: '#7fd4ff', shoot: '#ff3b30', hover: '#ffffff', push: '#c58cff', pick: '#7fd4ff' } as const
 
 /** Height of the top of a hex, or 0 off the board. */
 function topAt(game: GameState, h: Axial): number {
@@ -489,6 +489,7 @@ function Scene() {
   const game = useGame((s) => s.game)
   const armed = useGame((s) => s.armed)
   const selected = useGame((s) => s.selected)
+  const picks = useGame((s) => s.picks)
   const hoverHex = useGame((s) => s.hoverHex)
   const busy = useGame((s) => s.busy)
   const ai = useGame((s) => s.ai)
@@ -518,6 +519,11 @@ function Scene() {
     const p = hexToWorld(h, frame)
     return [p.x, topAt(game, h), p.z]
   }
+  const pickAt = new Map<string, Action>()
+  for (const p of picks ?? []) {
+    const h = p.targetUid ? game.units[p.targetUid]?.hex : null
+    if (h) pickAt.set(hexKey(h), p)
+  }
   const shooter = beat && beat.kind === 'shot' ? game.units[beat.uid] : null
   const deploying = beat && beat.kind === 'deploy' ? game.units[beat.uid] : null
 
@@ -525,6 +531,12 @@ function Scene() {
   // behind it). A hex with a legal action takes it (a move, a deploy, an attack on whatever stands there); otherwise a
   // unit's own hex selects that unit, and empty ground clears the selection and any armed weapon.
   const onPick = (cell: Cell) => {
+    // an open targeted button (a Command or a Tactics card with several targets): a tap on a target's hex plays it
+    const pick = pickAt.get(hexKey(cell))
+    if (pick) {
+      take(pick)
+      return
+    }
     const a = actionForHex(af, hexKey(cell), armed)
     if (a) {
       take(a)
@@ -535,7 +547,7 @@ function Scene() {
       setStore({ selected: selected === there.uid ? null : there.uid })
       return
     }
-    setStore({ selected: null, armed: null })
+    setStore({ selected: null, armed: null, openItem: null, picks: null })
   }
   const onHoverHex = (c: Cell | null) => {
     const there = c ? unitAt(game, c) : null
@@ -558,6 +570,10 @@ function Scene() {
       {[...af.pushTo.entries()].map(([k, a]) => (
         <HexRing key={'p' + k} at={hexToWorld(a.to!, frame)} y={topAt(game, a.to!)} colour={a.collide ? HL.shoot : HL.push} inner={a.collide ? 0.55 : 0.7} />
       ))}
+      {[...pickAt.keys()].map((k) => {
+        const [q, r] = k.split(',').map(Number) as [number, number]
+        return <HexRing key={'k' + k} at={hexToWorld({ q, r }, frame)} y={topAt(game, { q, r })} colour={HL.pick} inner={0.55} />
+      })}
       {[...af.deployTo.entries()].map(([k, a]) => (
         <HexRing key={'d' + k} at={hexToWorld(a.to!, frame)} y={topAt(game, a.to!)} colour={HL.deploy} inner={0.6} />
       ))}
