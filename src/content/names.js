@@ -18,7 +18,16 @@ export const UNITS = Object.freeze({
   u03: 'Radiant Apogee',
   u04: 'Zealot Lance',
   u05: 'Bloodhound Relic',
-  u06: 'Aegis Paragon'
+  u06: 'Aegis Paragon',
+  u07: 'Halo Sovereign',
+  u08: 'Dockhand Mule',
+  u09: 'Swift Harrier',
+  u10: 'Bastion Warden',
+  u11: 'Night Shrike',
+  u12: 'Grim Fencer',
+  u13: 'Steel Paladin',
+  u14: 'Ember Gunner',
+  u15: 'Dune Bombard'
 });
 
 /** What each unit is for, in one phrase. Shown on the unit card. */
@@ -28,7 +37,16 @@ export const ROLES = Object.freeze({
   u03: 'Glass cannon',
   u04: 'Debuff bruiser',
   u05: 'Berserker',
-  u06: 'Zone controller'
+  u06: 'Zone controller',
+  u07: 'Ace',
+  u08: 'Utility walker',
+  u09: 'Interceptor',
+  u10: 'Guardian',
+  u11: 'Sniper',
+  u12: 'Duelist',
+  u13: 'All-rounder',
+  u14: 'Gunner',
+  u15: 'Bombard'
 });
 
 /**
@@ -41,8 +59,82 @@ export const WEAPONS = Object.freeze({
   u03a: 'Scatter emitter',    u03b: 'Dorsal beam cannon',
   u04a: 'Wrist hook',         u04b: 'Barbed lance',
   u05a: 'Scrap pistol',       u05b: 'Wrecking claw',
-  u06a: 'Pepperbox gun',      u06b: 'Suppression mortar'
+  u06a: 'Pepperbox gun',      u06b: 'Suppression mortar',
+  u07a: 'Lumen blade',        u07b: 'Heavy lance rifle',
+  u08a: 'Clamp arms',
+  u09a: 'Twin grenade launcher', u09b: 'Long rifle',
+  u10a: 'Paired sabres',      u10b: 'Warden rifle',
+  u11a: 'Talon kick',         u11b: 'Needle rifle',
+  u12a: 'Chain claw',         u12b: 'Red saber',
+  u13a: 'Arc sword',          u13b: 'Service rifle',
+  u14a: 'Shoulder cannons',   u14b: 'Spread rifle',
+  u15a: 'Twin howitzers',     u15b: 'Missile box'
 });
+
+/**
+ * Ability names for u07 to u15 (the first six units' ability names live with the text generator, in abilitytext.js,
+ * which reads these too).
+ */
+export const ABILITY_NAMES = Object.freeze({
+  u07c: 'Resonance Link',     u07o: 'Overwhelm Field',
+  u08c: 'Haul Out',           u08r: 'Stock Up',          u08d: 'Load Sharing',
+  u09r: 'Passing Cut',        u09o: 'Afterburn Glide',
+  u10c: 'Surge Sync',         u10d: 'Plate Command',     u10e: 'Intercede',
+  u11c: 'Pin Down',           u11d: 'Raven Command',
+  u12c: 'Rending Blow',       u12d: 'Blade Command',
+  u13c: 'Shove Off',          u13d: 'Steady Hands',      u13e: 'Stand Forward',
+  u14c: 'Concussion',         u14o: 'Braced Stance',
+  u15c: 'Fire Plan',          u15d: 'Scatter Count',
+  // the Remote Weapon Systems' own abilities
+  u10xo: 'Plate Screen',      u11xo: 'Spotter Perch',    u12xr: 'Drone Slash'
+});
+
+/** Remote Weapon Systems, by the ids in `src/content/units.js` (`remotes`). */
+export const REMOTES = Object.freeze({
+  u10x: 'Hex-plate drone',
+  u11x: 'Raven drone',
+  u12x: 'Blade drones'
+});
+
+/** Tactics card names for t15 to t41 (t01 to t14 are named in abilitytext.js, which reads these too). */
+export const TACTICS_NAMES = Object.freeze({
+  t15: 'Core Overflow',       t16: 'Sweep and Haul',     t17: 'Snatch and Run',
+  t18: 'Max Thrust',          t19: 'Field Refit',        t20: 'Scrap Patch',
+  t21: 'Kit Drop',            t22: 'Second Look',        t23: 'Small Target',
+  t24: 'Plate Storm',         t25: 'Dead Air',           t26: 'Blade Rush',
+  t27: 'Strip Down',          t28: 'Swarm Strike',       t29: 'Signal Jam',
+  t30: 'Plate Wall',          t31: 'Triangulate',        t32: 'Step In',
+  t33: 'Covering Fire',       t34: 'Double Tap',         t35: 'Grind Forward',
+  t36: 'Shoulder to Shoulder', t37: 'Pep Talk',          t38: 'Wrecker Pass',
+  t39: 'Clean Sweep',         t40: 'Riposte',            t41: 'Chaff Cloud'
+});
+
+/**
+ * Traits, by trait id: the vocabulary that gates Tactics cards, plus the ones that are rules (Hover, Mass Produced).
+ * The card faces read these.
+ */
+export const TRAITS = Object.freeze({
+  durable: 'Durable',
+  support: 'Support',
+  assault: 'Assault',
+  'high-maneuver': 'High manoeuvre',
+  artillery: 'Artillery',
+  installation: 'Installation',
+  hover: 'Hover',
+  'mass-produced': 'Mass-produced',
+  'task-force': 'Task Force',
+  'remote-link': 'Remote Link',
+  regular: 'Line Regular',
+  remote: 'Remote weapon'
+});
+
+/**
+ * @param {string} id
+ * @returns {string}
+ */
+export function traitName(id) {
+  return TRAITS[id] || id;
+}
 
 /** Actions, by action id. */
 export const ACTIONS = Object.freeze({
@@ -162,7 +254,10 @@ export const KEYWORDS = Object.freeze({
   garrison: "A stranded position. Rescue your own from an adjacent hex; destroy the enemy's by landing a single point of damage. Either scores 2 victory points.",
   command: "Usable at any point during this unit's activation, once each. Free in Timeline, though most cost Energy.",
   ongoing: "Always in force while its condition holds. Never used, never spent.",
-  response: "Fires by itself when its trigger happens, whether or not this unit is activating."
+  response: "Fires by itself when its trigger happens, whether or not this unit is activating.",
+  remote: "A remote weapon: a board piece with 1 HP that its unit deploys and repositions. It blocks nothing, causes no Engagement and contests nothing, but no machine may end a move on it. It can be attacked; destroying one scores its VP, and it returns to its unit's supply when it or its unit is destroyed.",
+  challenge: "Before the roll, a unit that is not under attack swaps places with an attacked ally within 2 hexes and becomes the target instead.",
+  massProduced: "A squad may field this machine more than once."
 });
 
 /**
@@ -240,8 +335,8 @@ export const UI = Object.freeze({
  */
 export function displayName(id) {
   const pack = activePack();
-  return (pack && pack.names[id]) || UNITS[id] || WEAPONS[id] || ACTIONS[id] || TERRAIN[id] ||
-    STATUSES[id] || UPGRADES[id] || id;
+  return (pack && pack.names[id]) || UNITS[id] || WEAPONS[id] || REMOTES[id] || ABILITY_NAMES[id] || TACTICS_NAMES[id] ||
+    ACTIONS[id] || TERRAIN[id] || STATUSES[id] || UPGRADES[id] || id;
 }
 
 /**
@@ -294,7 +389,13 @@ export function critText(crit) {
   const parts = [];
   if (crit.damage) parts.push('+' + crit.damage + ' damage');
   if (crit.dice) parts.push('roll ' + crit.dice + ' more ' + (crit.dice === 1 ? 'die' : 'dice'));
-  if (crit.status) parts.push(STATUSES[crit.status] || crit.status);
+  if (crit.status) parts.push((crit.afterDamage ? 'after damage, ' : '') + (STATUSES[crit.status] || crit.status));
+  if (crit.damagePerUpgrade) {
+    parts.push('+1 damage per ' + (crit.damagePerUpgrade === 'any' ? 'upgrade' : (UPGRADES[crit.damagePerUpgrade] || crit.damagePerUpgrade)) +
+      ' on this unit' + (crit.max ? ' (up to +' + crit.max + ')' : ''));
+  }
+  if (crit.upgrade) parts.push((crit.afterDamage ? 'after damage, ' : '') + 'gain a ' + (UPGRADES[crit.upgrade] || crit.upgrade));
+  if (crit.damageNearRemote) parts.push('deal ' + crit.damageNearRemote + " damage to each enemy next to this unit's remote weapon");
   if (crit.damagePerCrit) parts.push('+' + crit.damagePerCrit + ' damage per critical' + (crit.max ? ' (up to +' + crit.max + ')' : ''));
   if (crit.move) parts.push('after damage, move ' + crit.move + (crit.ignoreEngagement ? ' ignoring engagement' : ''));
   if (crit.repeat) parts.push('after damage, repeat the attack once at no Timeline cost');
@@ -311,8 +412,9 @@ export function critText(crit) {
  * @returns {string}
  */
 export function weaponLine(w) {
-  return displayName(w.wid) + ' — ' + w.tlCost + ' TL, range ' + w.range +
-    ', ' + w.strength + ' dice' + (w.ignoreLos ? ', ignores line of sight' : '');
+  return displayName(w.wid) + ' — ' + w.tlCost + ' TL, ' + (w.area ? 'area of ' + w.area.length + ' hexes' : 'range ' + w.range) +
+    ', ' + w.strength + ' dice' + (w.ignoreLos ? ', ignores line of sight' : '') +
+    (w.alsoAdjacent ? ', also hits each enemy next to the target' : '');
 }
 
 /**

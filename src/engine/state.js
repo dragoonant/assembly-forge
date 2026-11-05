@@ -190,8 +190,88 @@ export function terrainAt(state, h) {
  * @param {Object} u
  * @returns {boolean}
  */
-export function hasHover(u) {
-  return Boolean(u.traits && u.traits.indexOf('hover') !== -1);
+export function hasHover(u, state) {
+  if (u.traits && u.traits.indexOf('hover') !== -1) return true;
+  // an ongoing Hover that depends on an Upgrade it holds ("while it has a Speed Upgrade, it has Hover")
+  for (const a of u.abilities || []) {
+    if (a.timing !== 'ongoing') continue;
+    if (!a.effects.some(function (e) { return e.k === 'hover'; })) continue;
+    if (a.when && a.when.hasUpgrade && u.upgrades.indexOf(a.when.hasUpgrade) === -1) continue;
+    return true;
+  }
+  // Hover granted for one activation by a card or ability
+  return Boolean(state && state.activation && state.activation.uid === u.uid && state.activation.mods.hover);
+}
+
+// --- Remote Weapon Systems ---------------------------------------------------
+
+/**
+ * A Remote Weapon System on a hex, or null. RWS are board pieces that belong to the unit that deployed them: HP 1,
+ * a VP value, abilities of their own. They do not block movement or Line of Sight, do not cause Engagement and do not
+ * contest Objectives, but no unit may end a move on one (rulebook 2026-10-30, "Remote Weapon System").
+ * @param {Object} state
+ * @param {?{q: number, r: number}} h
+ * @returns {?Object}
+ */
+export function remoteAt(state, h) {
+  if (!h) return null;
+  const order = state.remoteOrder || [];
+  for (let i = 0; i < order.length; i++) {
+    const r = state.remotes[order[i]];
+    if (r.hex && r.hex.q === h.q && r.hex.r === h.r) return r;
+  }
+  return null;
+}
+
+/**
+ * The RWS a unit owns, deployed or in its supply.
+ * @param {Object} state
+ * @param {string} uid
+ * @returns {Object[]}
+ */
+export function remotesOf(state, uid) {
+  return (state.remoteOrder || []).map(function (rid) { return state.remotes[rid]; })
+    .filter(function (r) { return r.owner === uid; });
+}
+
+/**
+ * Every RWS of a side on the battlefield, in declaration order.
+ * @param {Object} state
+ * @param {?Side} [side]
+ * @returns {Object[]}
+ */
+export function deployedRemotes(state, side) {
+  return (state.remoteOrder || []).map(function (rid) { return state.remotes[rid]; })
+    .filter(function (r) { return r.hex && (side === undefined || side === null || r.side === side); });
+}
+
+/**
+ * Does an RWS carry an ongoing aura of this kind ('auraReduceDamage', 'auraAccuracy')? Returns its size, or 0.
+ * @param {Object} r
+ * @param {string} kind
+ * @returns {number}
+ */
+export function remoteAura(r, kind) {
+  let n = 0;
+  for (const a of r.abilities || []) {
+    if (a.timing !== 'ongoing') continue;
+    for (const e of a.effects) if (e.k === kind) n += e.n;
+  }
+  return n;
+}
+
+/**
+ * An empty hex: on the board, passable, and holding no unit, Garrison, RWS, structure or token of any kind (rulebook
+ * 2026-10-30, "Empty Hex"). Objectives and map pickups are tokens.
+ * @param {Object} state
+ * @param {{q: number, r: number}} h
+ * @returns {boolean}
+ */
+export function isEmptyHex(state, h) {
+  const cell = cellAt(state, h);
+  if (!cell || state.rules.terrain[cell.terrain].impassable) return false;
+  return !unitAt(state, h) && !garrisonAt(state, h) && !remoteAt(state, h) && !baseAt(state, h) &&
+    !objectiveAt(state, h) && !pickupAt(state, h);
 }
 
 /**
@@ -411,6 +491,12 @@ export function createGame(spec) {
       return { pid: p.pid, kind: p.kind, upgrade: p.upgrade || null, hex: { q: p.hex.q, r: p.hex.r } };
     }),
 
+    /** Remote Weapon Systems, by rid (`<owner uid>.<defId>`); `hex` is null while in the owner's supply. */
+    remotes: {},
+    remoteOrder: [],
+    /** Work that waits until no decision is open: responses to a unit ending its movement, for instance. */
+    deferred: [],
+
     players: [emptyPlayer(0), emptyPlayer(1)],
 
     timeline: Timeline.createTimeline(rules),
@@ -507,6 +593,8 @@ function emptyPlayer(side) {
     tacticsLockout: false,
     /** Garrisons this player has Rescued, for abilities that scale with it. */
     rescued: 0,
+    /** Enemy Garrisons this player has destroyed, for cards that scale with it. */
+    garrisonsDestroyed: 0,
     tactics: { deck: [], hand: [], discard: [] }
   };
 }
@@ -549,7 +637,8 @@ export function addUnit(state, spec) {
     // weapons can be modified in play and two instances of the same definition
     // must not share an object.
     weapons: (spec.weapons || []).map(function (w) {
-      return {
+      // every field the card data carries survives (also-adjacent targets, strength per Upgrade, and so on)
+      return Object.assign(clone(w), {
         wid: w.wid,
         tlCost: w.tlCost,
         range: w.range,
@@ -563,7 +652,7 @@ export function addUnit(state, spec) {
         effects: w.effects ? clone(w.effects) : [],
         area: w.area ? clone(w.area) : null,
         strengthPerAlly: w.strengthPerAlly ? clone(w.strengthPerAlly) : null
-      };
+      });
     }),
     abilities: (spec.abilities || []).map(function (a) { return clone(a); }),
     traits: (spec.traits || []).slice(),
@@ -575,6 +664,17 @@ export function addUnit(state, spec) {
   if (u.tl < 1) throw new Error('Unit ' + u.uid + ' has a starting Timeline below 1');
   state.units[u.uid] = u;
   state.unitOrder.push(u.uid);
+  // The unit's Remote Weapon Systems start in its supply, off the board.
+  if (!state.remotes) { state.remotes = {}; state.remoteOrder = []; }
+  for (const r of spec.remotes || []) {
+    const rid = u.uid + '.' + r.defId;
+    state.remotes[rid] = {
+      rid: rid, defId: r.defId, owner: u.uid, side: u.side, hex: null,
+      hp: r.hp === undefined ? 1 : r.hp, maxHp: r.hp === undefined ? 1 : r.hp, vp: r.vp === undefined ? 2 : r.vp,
+      abilities: (r.abilities || []).map(function (a) { return clone(a); })
+    };
+    state.remoteOrder.push(rid);
+  }
   return u;
 }
 
@@ -687,7 +787,7 @@ export function beginActivation(state, uid, side) {
      * -- "this activation" is the wording on every published card, and a
      * modifier parked on the unit would need clearing from somewhere else.
      */
-    mods: { strength: 0, accuracy: 0, move: 0 },
+    mods: { strength: 0, accuracy: 0, move: 0, damage: 0, nextStrength: 0, hover: false },
     /** Attacks granted beyond the one Primary Action, at no Timeline cost. */
     extraAttacks: 0,
     /**

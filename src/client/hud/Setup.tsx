@@ -1,52 +1,11 @@
 // Squad select and the mission briefing, ported from the 2D game. Both are one flow and share one overlay.
-import { Decks, displayName, Names, Packs, roleName, SCENARIO_ID, sideName, squadsFor, teamName, teamNote, teamOrder, teamUnits, Text } from '../engine'
+import { Decks, Names, Packs, SCENARIO_ID, sideName } from '../engine'
 import { choosePack } from '../packs'
-import { chooseTeam, deploy, resetDeck, toBrief, toggleDeckCard, toSelect } from '../game'
+import { deploy, resetDeck, toggleDeckCard, toSelect } from '../game'
+import { TacticsCardFace, UnitCardFace } from './Cards'
+import { SquadSelect } from './SquadSelect'
 import { useModelsReady } from '../board/preload'
 import { HUMAN, useGame } from '../store'
-
-function Select() {
-  const myTeam = useGame((s) => s.myTeam)
-  const S = Names.SETUP
-  const packs = Packs.list()
-  const current = Packs.activeId()
-  return (
-    <div className="setup-panel" data-testid="select">
-      <h2>{S.chooseTitle}</h2>
-      <p className="dim">{S.chooseHint}</p>
-      {packs.length > 1 && (
-        <div className="pack-toggle" data-testid="pack-toggle">
-          <span className="dim">Roster:</span>
-          {packs.map((p) => (
-            <button key={p.id} className={p.id === current ? 'on' : ''} data-testid={'pack-' + p.id} onClick={() => choosePack(p.id)}>
-              {p.label}
-            </button>
-          ))}
-        </div>
-      )}
-      <div className="team-grid">
-        {teamOrder().map((tid) => (
-          <button key={tid} className={'team' + (myTeam === tid ? ' chosen' : '')} data-testid={'team-' + tid} onClick={() => chooseTeam(tid)}>
-            <strong>{teamName(tid)}</strong>
-            <span className="dim">{teamNote(tid)}</span>
-            <ul>
-              {teamUnits(tid).map((d) => (
-                <li key={d}>
-                  {displayName(d)} <span className="dim">· {roleName(d)}</span>
-                </li>
-              ))}
-            </ul>
-          </button>
-        ))}
-      </div>
-      <div className="setup-foot">
-        <button className="setup-go" disabled={!myTeam} data-testid="confirm" onClick={toBrief}>
-          {S.confirm}
-        </button>
-      </div>
-    </div>
-  )
-}
 
 /** The player's nine Tactics cards, picked from what the squad may take; starts on the suggested deck. */
 function DeckPicker({ squad }: { squad: string[] }) {
@@ -65,19 +24,7 @@ function DeckPicker({ squad }: { squad: string[] }) {
         {pool.map((cid) => {
           const on = deck.indexOf(cid) !== -1
           const c = Decks.card(cid)
-          return (
-            <button
-              key={cid}
-              className={'deck-card' + (on ? ' on' : '')}
-              data-testid={'deck-' + cid}
-              disabled={!on && full}
-              onClick={() => toggleDeckCard(cid, suggested)}
-            >
-              <strong>{Text.tacticsName(cid)}</strong>
-              {c.requires && c.requires.defId && <span className="sig">{displayName(c.requires.defId)}</span>}
-              <span className="dim">{Text.abilityText(c)}</span>
-            </button>
-          )
+          return <TacticsCardFace key={cid} cid={cid} card={c} on={on} disabled={!on && full} onClick={() => toggleDeckCard(cid, suggested)} />
         })}
       </div>
       {myDeck && (
@@ -90,12 +37,12 @@ function DeckPicker({ squad }: { squad: string[] }) {
 }
 
 function Brief() {
-  const myTeam = useGame((s) => s.myTeam)
-  const foeTeam = useGame((s) => s.foeTeam)
+  const mySquad = useGame((s) => s.mySquad)
+  const foeSquad = useGame((s) => s.foeSquad)
   const myDeck = useGame((s) => s.myDeck)
   const S = Names.SETUP
   const brief = Names.SCENARIOS[SCENARIO_ID]
-  const squads = squadsFor(myTeam, foeTeam)
+  const squads: [string[], string[]] = [mySquad, foeSquad ?? []]
   const deckOk = !myDeck || Decks.legal(myDeck, squads[HUMAN])
   const models = useModelsReady()
   return (
@@ -114,16 +61,14 @@ function Brief() {
         {([0, 1] as const).map((side) => (
           <div key={side} className={'force s' + side}>
             <h4>{side === HUMAN ? S.yourSquad : S.enemySquad} · {sideName(side)}</h4>
-            <div className="dim">{teamName(side === HUMAN ? myTeam! : foeTeam!)}</div>
-            {squads[side].map((d) => (
-              <div key={d}>
-                {displayName(d)} <span className="dim">· {roleName(d)}</span>
-              </div>
-            ))}
+            <div className="brief-cards">
+              {squads[side].map((d, i) => (
+                <UnitCardFace key={d + i} defId={d} side={side} size="mini" />
+              ))}
+            </div>
           </div>
         ))}
       </div>
-      {myTeam && myTeam === foeTeam && <p className="dim">{S.mirror}</p>}
       <DeckPicker squad={squads[HUMAN]} />
       <div className="setup-foot">
         <button onClick={toSelect}>{S.back}</button>
@@ -135,8 +80,29 @@ function Brief() {
   )
 }
 
+/** The character select, with the roster toggle when a local pack is present. */
+function SelectScreen() {
+  const packs = Packs.list()
+  const current = Packs.activeId()
+  return (
+    <>
+      <SquadSelect />
+      {packs.length > 1 && (
+        <div className="pack-toggle floating" data-testid="pack-toggle">
+          <span className="dim">Roster:</span>
+          {packs.map((p) => (
+            <button key={p.id} className={p.id === current ? 'on' : ''} data-testid={'pack-' + p.id} onClick={() => choosePack(p.id)}>
+              {p.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </>
+  )
+}
+
 export function Setup() {
   const screen = useGame((s) => s.screen)
   if (screen === 'play') return null
-  return <div className="overlay">{screen === 'select' ? <Select /> : <Brief />}</div>
+  return <div className={'overlay' + (screen === 'select' ? ' select-screen' : '')}>{screen === 'select' ? <SelectScreen /> : <Brief />}</div>
 }

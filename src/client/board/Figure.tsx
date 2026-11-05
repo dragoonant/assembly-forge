@@ -12,12 +12,13 @@ import { AnimationMixer, Box3, LoopOnce, LoopRepeat, Vector3, type AnimationActi
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js'
 import { Rig, MACHINE_HEIGHT } from './Machine'
 import { MotionContext } from './motionCue'
+import { smoothNormals } from './smoothNormals'
 
 /**
  * Definition ids with a finished model in `public/assets/models/<id>.glb`. Add an id here in the same commit as its GLB.
  * Listing them explicitly means the game never requests a file that is not there.
  */
-export const ENABLED_MODELS: readonly string[] = ['u01', 'u02', 'u03', 'u04', 'u05', 'u06']
+export const ENABLED_MODELS: readonly string[] = ['u01', 'u02', 'u03', 'u04', 'u05', 'u06', 'u07', 'u08', 'u09', 'u10', 'u11', 'u12', 'u13', 'u14', 'u15']
 
 /** Clips that loop; every other clip plays once and holds its last pose. */
 const LOOPING = new Set(['idle', 'walk', 'fly'])
@@ -101,6 +102,8 @@ function RiggedModel({ scene, clips, pose, frozenAt }: { scene: Object3D; clips:
 
 function Model({ defId, pose, frozenAt }: { defId: string; pose?: string; frozenAt?: number | null }) {
   const gltf = useGLTF(modelUrl(defId))
+  // the models carry per-face normals (smoothNormals.ts); smooth them once per loaded file, before any clone
+  useMemo(() => smoothNormals(gltf.scene), [gltf.scene])
   return gltf.animations.length ? (
     <RiggedModel scene={gltf.scene} clips={gltf.animations} pose={pose} frozenAt={frozenAt} />
   ) : (

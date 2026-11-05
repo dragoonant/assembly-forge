@@ -3,10 +3,10 @@
 // the 8 px tap rule first, so a camera drag never also moves a machine.
 import { Line, useTexture } from '@react-three/drei'
 import { Canvas, useFrame, type ThreeEvent } from '@react-three/fiber'
-import { useLayoutEffect, useMemo, useRef } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { BufferGeometry, Color, Float32BufferAttribute, MeshStandardMaterial, Object3D, RepeatWrapping, SRGBColorSpace, type Group, type InstancedMesh, type Texture } from 'three'
-import { actionForHex, affordances, hexKey } from '../affordances'
-import { cellsOf, losTrace, unitAt, weaponsOf, type Action, type Axial, type GameState } from '../engine'
+import { actionForHex, actionHex, affordances, hexKey } from '../affordances'
+import { cellsOf, losTrace, remotesOf, unitAt, weaponsOf, type Action, type Axial, type GameState } from '../engine'
 import { humanTurn, take } from '../game'
 import { setStore, useGame } from '../store'
 import { CameraRig } from './CameraRig'
@@ -461,6 +461,61 @@ function Pickups({ game, frame }: { game: GameState; frame: Frame }) {
   )
 }
 
+/** Which drone model each remote weapon uses (src/content/names.js REMOTES names them). */
+const REMOTE_PROP: Record<string, string> = { u10x: 'rws_shield', u11x: 'rws_bird', u12x: 'rws_blade' }
+
+/**
+ * Remote weapons on the board: the drone hovering over its hex with a slow bob, a ring in its side's colour, and a red
+ * ring when it can be attacked. Like the machines they take no taps; the hex does.
+ */
+function Remotes({ game, frame, shootable }: { game: GameState; frame: Frame; shootable: Set<string> }) {
+  const group = useRef<Group>(null)
+  useFrame(({ clock }) => {
+    const g = group.current
+    if (!g) return
+    g.children.forEach((c, i) => {
+      const drone = c.children[0]
+      if (drone) drone.position.y = 0.32 + Math.sin(clock.elapsedTime * 2 + i) * 0.04
+    })
+  })
+  const live = remotesOf(game).filter((r) => r.hex)
+  return (
+    <group ref={group}>
+      {live.map((r) => {
+        const p = hexToWorld(r.hex!, frame)
+        const y = topAt(game, r.hex!)
+        const key = hexKey(r.hex!)
+        return (
+          <group key={r.rid} position={[p.x, y, p.z]} name={'remote-' + r.rid}>
+            <group position={[0, 0.32, 0]}>
+              <Prop
+                name={REMOTE_PROP[r.defId] ?? 'rws_shield'}
+                width={0.42}
+                fallback={
+                  <mesh>
+                    <octahedronGeometry args={[0.14]} />
+                    <meshStandardMaterial color={SIDE_COLOUR[r.side]} />
+                  </mesh>
+                }
+              />
+            </group>
+            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.02, 0]}>
+              <ringGeometry args={[0.2, 0.26, 24]} />
+              <meshBasicMaterial color={SIDE_COLOUR[r.side]} transparent opacity={0.85} depthWrite={false} />
+            </mesh>
+            {shootable.has(key) && (
+              <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.025, 0]}>
+                <ringGeometry args={[0.28, 0.34, 24]} />
+                <meshBasicMaterial color={HL.shoot} transparent opacity={0.9} depthWrite={false} />
+              </mesh>
+            )}
+          </group>
+        )
+      })}
+    </group>
+  )
+}
+
 /** While a weapon is armed, a line from the shooter to the hovered enemy: solid when clear, dashed red when blocked. */
 function LosLine({ game, frame, armed, hover }: { game: GameState; frame: Frame; armed: string | null; hover: Axial | null }) {
   if (!armed || !hover || !game.activation) return null
@@ -505,6 +560,9 @@ function Scene() {
   // humanTurn() reads busy and ai from the store, so they are dependencies even though they are not passed
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const af = useMemo(() => affordances(game, armed, humanTurn()), [game, armed, busy, ai])
+  // a pattern weapon's chosen aim: set by the first tap on a target hex (touch has no hover); a second tap fires it
+  const [aimKey, setAimKey] = useState<string | null>(null)
+  useEffect(() => setAimKey(null), [game, armed])
   const surface = useMemo(() => {
     const byKey = new Map(cells.map((c) => [c.q + ',' + c.r, c]))
     return (x: number, z: number): number => {
@@ -521,8 +579,8 @@ function Scene() {
   }
   const pickAt = new Map<string, Action>()
   for (const p of picks ?? []) {
-    const h = p.targetUid ? game.units[p.targetUid]?.hex : null
-    if (h) pickAt.set(hexKey(h), p)
+    const h = actionHex(game, p)
+    if (h && !pickAt.has(hexKey(h))) pickAt.set(hexKey(h), p)
   }
   const shooter = beat && beat.kind === 'shot' ? game.units[beat.uid] : null
   const deploying = beat && beat.kind === 'deploy' ? game.units[beat.uid] : null
@@ -537,7 +595,13 @@ function Scene() {
       take(pick)
       return
     }
-    const a = actionForHex(af, hexKey(cell), armed)
+    const key = hexKey(cell)
+    const a = actionForHex(af, key, armed)
+    if (a && a.areaHexes && aimKey !== key) {
+      // a pattern attack shows what it will hit first; the second tap on the same hex fires
+      setAimKey(key)
+      return
+    }
     if (a) {
       take(a)
       return
@@ -554,6 +618,11 @@ function Scene() {
     setStore({ hoverHex: c ? { q: c.q, r: c.r } : null, hoverUnit: there && there.alive ? there.uid : null })
   }
 
+  // the hexes a pattern attack would hit: the tapped aim, or else the one under the pointer
+  const previewKey = aimKey ?? (hoverHex ? hexKey(hoverHex) : null)
+  const preview = previewKey && armed ? actionForHex(af, previewKey, armed) : null
+  const patternHexes = preview && preview.areaHexes ? preview.areaHexes : null
+
   const units = Object.values(game.units).filter((u) => u.alive && u.hex)
   const shootHexes = new Set(af.shootAt.keys())
 
@@ -564,7 +633,8 @@ function Scene() {
       <hemisphereLight args={['#e6eef6', '#5a5038', 1.0]} />
       <directionalLight position={[6, 14, 8]} intensity={2.1} castShadow shadow-mapSize={[2048, 2048]} shadow-camera-left={-12} shadow-camera-right={12} shadow-camera-top={12} shadow-camera-bottom={-12} />
       <HexTiles cells={cells} frame={frame} onPick={onPick} onHover={onHoverHex} />
-      {[...af.moveTo.entries()].map(([k, a]) => (
+      {/* while a targeted button is open its cyan targets replace the move rings, since a tap there plays it */}
+      {pickAt.size === 0 && [...af.moveTo.entries()].map(([k, a]) => (
         <HexRing key={'m' + k} at={hexToWorld(a.to!, frame)} y={topAt(game, a.to!)} colour={a.type === 'dash' ? HL.dash : HL.move} />
       ))}
       {[...af.pushTo.entries()].map(([k, a]) => (
@@ -577,6 +647,12 @@ function Scene() {
       {[...af.deployTo.entries()].map(([k, a]) => (
         <HexRing key={'d' + k} at={hexToWorld(a.to!, frame)} y={topAt(game, a.to!)} colour={HL.deploy} inner={0.6} />
       ))}
+      {patternHexes?.map((h) => (
+        <group key={'a' + h.q + ',' + h.r}>
+          <HexRing at={hexToWorld(h, frame)} y={topAt(game, h)} colour={HL.shoot} inner={0.05} opacity={aimKey ? 0.6 : 0.45} />
+          <HexRing at={hexToWorld(h, frame)} y={topAt(game, h) + 0.004} colour="#ffd0c8" inner={0.9} opacity={0.95} />
+        </group>
+      ))}
       {hoverHex && game.board.hexes[hexKey(hoverHex)] && (
         <HexRing at={hexToWorld(hoverHex, frame)} y={topAt(game, hoverHex)} colour={HL.hover} inner={0.9} opacity={0.6} />
       )}
@@ -584,6 +660,7 @@ function Scene() {
       <Objectives game={game} frame={frame} />
       <Garrisons game={game} frame={frame} shootable={shootHexes} />
       <Pickups game={game} frame={frame} />
+      <Remotes game={game} frame={frame} shootable={shootHexes} />
       {units.map((u) => {
         return (
           <UnitMover key={u.uid} uid={u.uid} side={u.side} home={worldOf(u.hex!)} worldOf={worldOf}>

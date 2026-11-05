@@ -18,6 +18,7 @@ import './movement-extras-suite.js';
 import './mechanics-suite.js';
 import './pack-suite.js';
 import './ai-suite.js';
+import './wave-suite.js';
 
 const summary = T.run(function (r) {
   const mark = r.ok ? '  ok  ' : ' FAIL ';

@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test'
 
 // Each rigged machine, frozen at the telling moment of each clip, through the figure viewer (the same Figure component
 // the board uses). The screenshots land in e2e-out/ for review: a scene change is not done until they have been looked at.
-const RIGGED = ['u01', 'u02', 'u03', 'u04', 'u05', 'u06']
+const RIGGED = ['u01', 'u02', 'u03', 'u04', 'u05', 'u06', 'u07', 'u08', 'u09', 'u10', 'u11', 'u12', 'u13', 'u14', 'u15']
 // [clip, seconds, yaw]: yaw 30 is the front three-quarter view, 90 the machine's left side
 const MOMENTS: [string, number, number?][] = [
   ['idle', 0],

@@ -1,8 +1,9 @@
 # STATUS (rewrite, don't append)
 
-**2026-11-04: M0 to M3 done; M4 has its models. The six machines are generated, rigged and animated, the board objects
-are models, and the deck is textured. Live at https://dragoonant.github.io/assembly-forge/ (the M4 work deploys when it is
-pushed). The owner reviews the set next.**
+**2026-11-05: every released unit is in. Fifteen machines (u01 to u15) with their Tactics cards, Remote Weapon drones and
+the mechanics they need; a fighting-game squad select over the whole pool with a CPU difficulty; our own unit and Tactics
+card faces with art rendered from the models. Live at https://dragoonant.github.io/assembly-forge/. The owner reviews the
+new set next.**
 
 ## What exists
 - Vite + React 19 + TypeScript + React Three Fiber, deploying `main` to GitHub Pages under `/assembly-forge/`.
@@ -11,6 +12,15 @@ pushed). The owner reviews the set next.**
   field, impassable), Jump, Hover, Push and Pull with collisions, map pickups, stacking Upgrades, the status timings and the
   tie-break. `docs/rules-reconciliation.md` lists every change, its config path, its tests, and the simplifications.
   A full audit (2026-11-03) of every rulebook section and every local-pack card is recorded there too.
+- The second wave (2026-11-05): nine more machines, u07 to u15, on the published numbers and mechanics of the nine units
+  released after the starter set, with our own names; 27 more Tactics cards (t15 to t41); Remote Weapon Systems as board
+  pieces; Challenge; unit Response abilities in attack windows; rerolls and set criticals; extra targets; two new area
+  patterns; Upgrades chosen, moved, taken and destroyed; Timeline delays; out-of-turn attacks. Squads are any three units
+  from the fifteen (a unit once unless Mass Produced); the AI picks its squad at random, easy or hard from a
+  unit-versus-unit matchup table (`src/ai/squad.js`, `src/ai/matchups.json`, written by `tools/ai-matchups.js`). The
+  client's new squad-select screen is being written against `Squads` in `src/client/engine.ts`, and the models for u07
+  to u15 are being made. Self-play over 3,600 random-squad games: no crashes, no forced passes; the utility walker (u08)
+  wins about a quarter of its games and the duelist (u12) about two thirds, the rest 44 to 59%.
 - Card mechanics: a resumable attack with response windows, area attacks, grants, attack cards, Push and Pull as the
   acting player's choice, unit responses that ask for their target (or can be declined), and the would-be-defeated window
   for attack and ability damage.
@@ -18,7 +28,19 @@ pushed). The owner reviews the set next.**
 - The skirmish scenario on the 203-hex starter grid, with our own point-symmetric layout: one Base a side, two Garrisons a
   side, three Objectives (6, 4, 4 VP), six map pickups.
 - The roster re-tuned by self-play; every team wins 42 to 58% of its mixed games.
-- The playable 3D board: squad select and briefing, then the 203-hex board from the player's seat at the left edge. Every
+- Squad select (2026-11-05, `src/client/hud/SquadSelect.tsx`): a fighting-game character select over the whole pool.
+  Every machine is a portrait tile; hover (or a first tap) focuses one and shows its full card beside the grid, and a
+  second tap adds it. Three slots a side under a VS banner; any three machines, each once unless mass-produced (the
+  rulebook's only squad rule). Lock in, and the CPU picks at the chosen difficulty (`src/ai/squad.js`, from a
+  unit-versus-unit matchup table of 3,600 AI games, `src/ai/matchups.json`): Random, Easy (it fields machines the
+  player's squad counters well) or Hard (it counter-picks). The difficulty is remembered. `?squad=u01,u02,u03&foe=...`
+  sets both squads; the old `?team=t_lance` names still work.
+- Card faces (`src/client/hud/Cards.tsx`), our own frame: a unit card has the machine's render over a glow in its side
+  colour, name and role, hexagonal HP, VP and Timeline badges, both weapons as rows of numbers with their critical
+  effects, abilities with colour-coded timing chips and Energy cost, and its traits; full size on the select screen,
+  compact in the briefing. Tactics cards are plates tinted by timing, with the unit or trait they need. Portraits are
+  renders of the finished models (`?viewer=<id>&portrait=bust|full`, `tools/render-portraits.mjs`).
+- The playable 3D board: the briefing, then the 203-hex board from the player's seat at the left edge. Every
   affordance comes from the engine's legal actions: green rings for a free Advance, amber for a Dash, cyan for deploying,
   red rings on targets, a line-of-sight line (dashed red to the blocking hex) while a weapon is armed, and terrain, cost
   and marker facts on hover. Stand-in machines in the house proportions, one silhouette per archetype, with ground rings,
@@ -40,6 +62,17 @@ pushed). The owner reviews the set next.**
   original 90-second battle themes made locally with MusicGen (`tools/make-music-local.py`, the AudioStudio audiocraft
   venv): a rock-and-brass theme, a darker metal-and-orchestra theme and a synth space-war theme, played in turn and round
   again. The take of each was picked by CLAP match to its prompt. A mute toggle that is remembered.
+- The released units beyond the starter set (2026-11-05): nine more machines, u07 to u15, each this project's own design
+  with its card's numbers and mechanics, and 27 Tactics cards (t15 to t41). New mechanics, all tested in
+  `tests/engine/wave-suite.js`: Remote Weapon drones (deployed, repositioned, attacked, returned to supply), Challenge,
+  setting a die to a critical, rerolling misses, extra dice, Upgrade choices and transfers, Timeline pushes, card draws,
+  out-of-turn and counter attacks, repeated attacks, "also hits each enemy adjacent", and two more area patterns.
+  `docs/rules-reconciliation.md` "Added for the second wave" lists them and the judgement calls. The board shows the
+  drones as hovering models with side rings; targeted Commands and cards ring their targets or hexes in cyan; choices
+  (an Upgrade, a drone's move) are asked on the board or the action bar.
+- A pattern weapon shows every hex it will hit while aimed: hover a target (mouse) or tap it once (touch); a second tap
+  fires.
+- Model normals are smoothed on load (`smoothNormals.ts`), which removes the faceted look up close.
 - The six machines as generated, rigged models (`public/assets/models/u01.glb` to `u06.glb`, about 1.7 MB each): model-kit
   proportions, a 17-bone skeleton with stiff armour weighting, and eight clips (idle, walk, jump, fly, melee, shoot, hit,
   destroyed) that the board picks from the current beat. Stand-ins remain as the fallback.
@@ -59,10 +92,15 @@ pushed). The owner reviews the set next.**
   three-button mouse (rule 27). The battle themes crossfade into each other.
 - URL switches: `?slowmo=N` stretches every animation N times for review; `?ai=both` to spectate, `?ai=none` for hotseat, `?speed=fast|instant`, and `?team=..&foe=..&seed=..&auto=1`.
 
-## Verified (2026-11-04)
-- `npm run typecheck`: clean.
-- `npm test`: 249 engine tests and 22 unit tests pass (the controller's shot-then-dice-then-commit path, the planner).
-- `npm run build`: clean.
+## Verified (2026-11-05)
+- `npm run typecheck`: clean. `npm test`: 294 engine tests and 23 unit tests pass. `npm run build`: clean.
+- `npm run e2e`: 27 tests, including the character select (pick three with two taps each, lock in, the CPU's squad
+  revealed) on desktop and on a phone in landscape, a pattern weapon's preview and two-tap fire, a drone placed by its
+  Command, and every clip of all fifteen machines in the figure viewer. Screenshots looked at.
+- `node tools/ai-matchups.js 3600`: no crashes or forced passes. Win rates by unit 44 to 59%, except the utility walker
+  (u08, 26%) and the duelist (u12, 66%), which carry their cards' numbers untuned.
+
+### Earlier (2026-11-04)
 - `npm run e2e` (14 tests, including the mouse map, including the HUD on a phone in landscape with every panel folded and no text selection, a tap
   on the hex behind a machine, and the deploy flight in slow motion): squad select to deploy to a move with real clicks on the 3D board; a whole AI-vs-AI game
   through the client; beats and effects playing at normal and fast speed; and every clip of all six machines in the figure
@@ -80,10 +118,14 @@ pushed). The owner reviews the set next.**
 - The rigs are fused single meshes from Hunyuan: big swings stretch the armour at the joint (worst in u05's claw wind-up),
   and the surfaces are softer and more faceted than the concept art.
 - The models and textures come from Hunyuan3D and FLUX.1 dev, both under non-commercial licences.
-- The models add about 17 MB to the first load of a game.
+- The fifteen machines are about 26 MB; the app preloads only the board objects at startup and each match's six
+  machines while the briefing is up (Deploy waits for them).
+- The new machines' rigs share the fused-mesh stretch (u13's rifle to foot when aiming, u10's forearm to hip in the
+  swing, u09's launcher to foot in the jump).
+- u08 and u12 are far from balanced against the rest (see above).
 - Mixed-team games have run about 57% to side 0 across runs with unpaired seeds; re-check with paired seeds.
 - Not checked on a phone or a real GPU; only headless software GL.
 - three, R3F and drei build into one chunk of about 1.3 MB (330 kB gzipped); splitting it is a later tidy-up.
 
 ## Next
-The owner reviews the machines, props and deck; then fixes from that review, and M5 (card art from the finished models).
+The owner reviews the new machines, squad select and cards; balance u08 and u12 if the owner wants house numbers.

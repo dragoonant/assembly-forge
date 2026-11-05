@@ -2,11 +2,13 @@
 // `perform`: apply it with the engine, play the blocking animation beats (a walk, a deploy, a shot), show the dice for an
 // attack, then commit the new state and start the effects (bursts, wrecks, labels, banners). The board therefore never
 // jumps to a result before the motion that caused it, and damage lands with the dice (the 2D game's rule, kept).
-import { apply, deciderSide, displayName, isTerminal, newSkirmish, teamOrder, aiChoose, type Action, type GameState } from './engine'
+import { apply, deciderSide, displayName, isTerminal, newSkirmish, aiChoose, type Action, type GameState } from './engine'
+import { canAdd, cpuSquad, squadSize, type Difficulty } from './squads'
+import { preloadSquads } from './board/preload'
 import { battleMusic, music } from './audio/sound'
 import { clearEffects, runBeats, runEffects, SPEED_FACTOR } from './presentation/director'
 import { newEntries, plan } from './presentation/plan'
-import { getStore, setStore, type Speed } from './store'
+import { getStore, saveDifficulty, setStore, type Speed } from './store'
 
 /** Pause between AI actions, so a person can see what happened. Instant is for tests and spectating. */
 const STEP_MS: Record<Speed, number> = { normal: 380, fast: 140, instant: 0 }
@@ -31,21 +33,51 @@ export function newGame(): void {
   epoch++
   diceDone = null
   clearEffects()
-  setStore({ screen: 'select', myTeam: null, foeTeam: null, myDeck: null, game: null, armed: null, openItem: null, picks: null, selected: null, busy: false, dice: null })
+  setStore({ screen: 'select', mySquad: [], foeSquad: null, myDeck: null, game: null, armed: null, openItem: null, picks: null, selected: null, busy: false, dice: null })
   battleMusic(false)
   music(true)
 }
 
-/** Pick the player's squad; the opponent draws one of the four at random (an interface choice, so Math.random is fine). */
-export function chooseTeam(tid: string): void {
-  const order = teamOrder()
-  const foe = order[Math.floor(Math.random() * order.length)]!
-  setStore({ myTeam: tid, foeTeam: foe, myDeck: null })
+/** Add a machine to the player's squad (the select screen checks it may join). Any change re-opens the CPU's pick. */
+export function addToSquad(defId: string): void {
+  const { mySquad } = getStore()
+  if (!canAdd(mySquad, defId)) return
+  setStore({ mySquad: mySquad.concat([defId]), foeSquad: null, myDeck: null })
   music(true)
 }
 
+export function removeFromSquad(i: number): void {
+  const next = getStore().mySquad.filter((_, j) => j !== i)
+  setStore({ mySquad: next, foeSquad: null, myDeck: null })
+}
+
+export function clearSquads(): void {
+  setStore({ mySquad: [], foeSquad: null, myDeck: null })
+}
+
+export function setDifficulty(d: Difficulty): void {
+  saveDifficulty(d)
+  setStore({ difficulty: d, foeSquad: null })
+}
+
+/** The CPU picks its squad against the player's full squad, at the chosen difficulty. */
+export function rollCpuSquad(seed?: string): void {
+  const { mySquad, difficulty } = getStore()
+  if (mySquad.length < squadSize()) return
+  setStore({ foeSquad: cpuSquad(mySquad, difficulty, seed ?? 'squad-' + Date.now()) })
+}
+
+/** Set both squads at once (URL switches and tests). */
+export function setSquads(mine: string[], foe: string[]): void {
+  setStore({ mySquad: mine.slice(), foeSquad: foe.slice(), myDeck: null })
+}
+
 export function toBrief(): void {
-  if (getStore().myTeam) setStore({ screen: 'brief' })
+  const { mySquad, foeSquad } = getStore()
+  if (mySquad.length >= squadSize() && foeSquad) {
+    preloadSquads([...mySquad, ...foeSquad])
+    setStore({ screen: 'brief' })
+  }
 }
 
 /** Toggle a card in the player's deck, starting from the suggested nine. */
@@ -65,13 +97,14 @@ export function toSelect(): void {
 
 /** Build the match and start playing. */
 export function deploy(seed?: string): void {
-  const { myTeam, foeTeam, myDeck } = getStore()
+  const { mySquad, foeSquad, myDeck } = getStore()
+  preloadSquads([...mySquad, ...(foeSquad ?? [])])
   stopAI()
   epoch++
   clearEffects()
   music(false)
   battleMusic(true)
-  const game = newSkirmish(seed ?? 'game-' + Date.now(), myTeam ?? undefined, foeTeam ?? undefined, [myDeck, null])
+  const game = newSkirmish(seed ?? 'game-' + Date.now(), mySquad.length ? mySquad : undefined, foeSquad ?? undefined, [myDeck, null])
   setStore((s) => ({ screen: 'play', game, rev: s.rev + 1, armed: null, openItem: null, picks: null, selected: null, busy: false, dice: null }))
   // the opening banner and anything else the setup logged
   const opening = plan(game, game, game.log)

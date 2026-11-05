@@ -27,6 +27,38 @@ import * as Timeline from './timeline.js';
  * @returns {Object} a new state
  */
 export function apply(state, action) {
+  const next = applyOne(state, action);
+  drainDeferred(next);
+  return next;
+}
+
+/**
+ * Work queued until no decision is open: a unit's responses to its own movement, the enemy's chance to answer a unit
+ * ending its movement nearby, and an effect list that waited behind a decision.
+ * @param {Object} s a state the caller owns
+ */
+function drainDeferred(s) {
+  let guard = 0;
+  while (!s.pending && s.deferred && s.deferred.length && !s.over) {
+    if (++guard > 64) throw new Error('Deferred work did not settle');
+    const d = s.deferred.shift();
+    if (d.kind === 'moved') {
+      const u = s.units[d.uid];
+      if (u && u.alive && u.hex) Effects.afterMovement(s, d.uid, d.path, Combat);
+    } else if (d.kind === 'enemyMoved') {
+      const u = s.units[d.uid];
+      if (u && u.alive && u.hex && s.activation) {
+        const foe = State.opponent(u.side);
+        if (Attack.enemyMovedOptions(s, foe, d.uid).length) s.pending = { kind: 'window', window: 'enemyMoved', side: foe, mover: d.uid };
+      }
+    } else if (d.kind === 'resume') {
+      Effects.resumeEffects(s, d.cont, Combat);
+    }
+    if (!s.pending) Attack.run(s);
+  }
+}
+
+function applyOne(state, action) {
   const canonical = Actions.resolveLegal(state, action);
   if (!canonical) {
     throw new Error(
@@ -52,6 +84,14 @@ export function apply(state, action) {
   // A unit's own triggered response: use it (on the chosen target) or decline it.
   if (canonical.type === 'trigger' || canonical.type === 'trigger_skip') {
     Effects.decideTrigger(next, canonical, Combat);
+    if (!next.pending) Attack.run(next);
+    return next;
+  }
+
+  // A step of a choice an effect opened: an Upgrade, a unit, a hex for an RWS; or a pass where the effect allows one.
+  if (next.pending && next.pending.kind === 'choose') {
+    Effects.decideChoose(next, canonical);
+    if (!next.pending) Attack.run(next);
     return next;
   }
 
@@ -130,7 +170,7 @@ export function apply(state, action) {
     case 'command': {
       const u = State.unit(next, act.uid);
       const a = Effects.ability(u, canonical.aid);
-      Effects.resolve(next, act.uid, a, canonical.targetUid || null, Combat);
+      Effects.resolve(next, act.uid, a, canonical.targetUid || null, Combat, { to: canonical.to || null, gid: canonical.gid || null });
       act.commandsUsed.push(canonical.aid);
       break;
     }
@@ -159,7 +199,7 @@ export function apply(state, action) {
         break;
       }
       act.tacticsBy[act.side] = true;
-      Effects.resolve(next, act.uid, c, canonical.targetUid || null, Combat);
+      Effects.resolve(next, act.uid, c, canonical.targetUid || null, Combat, { to: canonical.to || null, gid: canonical.gid || null });
       act.slots.tactics = true;
       // A card played in response to an opponent's attack locks the player out
       // of playing another on their next activation. Nothing plays defensively
@@ -254,6 +294,9 @@ function moveUnit(state, action, kind) {
     path: (action.path || []).map(function (h) { return { q: h.q, r: h.r }; })
   });
   State.collectPickup(state, u);
+  // its own "after this unit ends its movement" responses, and the enemy's, once this action has resolved
+  if (!state.deferred) state.deferred = [];
+  state.deferred.push({ kind: 'moved', uid: u.uid, path: (action.path || [from, u.hex]).map(function (h) { return { q: h.q, r: h.r }; }) });
 }
 
 /**

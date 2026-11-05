@@ -1,7 +1,8 @@
 # Content packs
 
 A content pack swaps the roster without touching the engine: its own unit definitions, the names a player reads for
-those units, their weapons and abilities, and the preset teams on squad select. The game always has the built-in cast
+those units, their weapons and abilities, and its preset teams. Squads are any three units from the pack's pool (a
+unit once unless it is `mass-produced`); the teams are a convenience the loader still checks. The game always has the built-in cast
 ("Our names"); any other pack is optional.
 
 ## Where packs live, and why
@@ -42,6 +43,7 @@ export default {
   },
   names: { m1: 'Unit name', m1a: 'Light weapon', m1b: 'Heavy weapon', m1c: 'Ability name' },
   roles: { m1: 'Bruiser' },
+  unitOrder: ['m1', 'm2', 'm3'],   // optional: the squad-select menu order (default: the order of `units`)
   teams: { team_a: { units: ['m1', 'm2', 'm3'] } },  // m2 and m3 defined like m1
   teamOrder: ['team_a'],
   teamNames: { team_a: 'Team A' },
@@ -73,6 +75,24 @@ Card and ability fields worth knowing:
   A response with more than one possible target always asks for the target.
 - `los: true` on a ranged ability, or on `strengthPerAlly`: the card says "[Range N]", which needs Line of Sight;
   "within N hexes" does not.
+- A unit's own Response in an attack window: `timing: 'response'`, `window` (`beforeRoll`, `afterRoll`,
+  `afterDamage`), `role` (`attacker` or `defender`), and for an attacker's `who`: `self` (this unit attacks), `other`
+  (another ally within `range` attacks) or `any`. `attackWhen` sets a condition on the attack (`ownUpgrade`,
+  `alliesInRange`, `attackerNearAlly`, `damagedEnemies`, `targetNearOwnRemote`, `unitTarget`).
+- `pickWhen` with `pick: 'one'`: `lessVp`, `damaged` or `counter` narrows which defender a card may cover.
+- `window: 'enemyMoved'` with a `reactAttack` effect: answers an enemy ending its movement in range.
+- `activeTrait` on a card: "your active <trait> unit", so the activating unit must carry the trait.
+- Command `target`s beyond enemies: `allyInRange`, `unitInRange`, `enemyNearOwnRemote`, `allyGarrisonInRange` (the
+  action names a `gid`), `emptyHex` and `hexNearOwnRemote` (the action names a `to` hex).
+
+### Remote Weapon Systems and counterparts
+
+A unit may bring Remote Weapon Systems as `remotes: [{ defId, hp, vp, abilities }]`; they start in its supply and a
+Command with a `placeRemote` effect deploys or repositions one. Their names go in `names` under their `defId`.
+
+A pack unit may name `counterpart`, the built-in unit with the same numbers and mechanics (or the AI falls back to its
+`standIn`): the AI's matchup table (`src/ai/matchups.json`) knows units by their built-in ids, so the squad picker
+reads a pack unit's record through it.
 
 ## Testing
 

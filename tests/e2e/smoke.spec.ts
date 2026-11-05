@@ -21,15 +21,25 @@ test('setup, deploy and move with real clicks on the board', async ({ page }) =>
   const errors = watchErrors(page)
   await page.goto('./')
   await expect(page.getByTestId('select')).toBeVisible()
-  await page.getByTestId('team-t_lance').click()
+  await page.waitForTimeout(500)
+  await page.screenshot({ path: 'e2e-out/select-open.png' })
+  // character select: a first tap focuses a machine, a second adds it; three, then lock in and the CPU picks
+  for (const d of ['u03', 'u02', 'u01']) {
+    await page.getByTestId('pick-' + d).click()
+    await page.getByTestId('pick-' + d).click()
+  }
+  await expect(page.getByTestId('my-slots').locator('.ss-slot.full')).toHaveCount(3)
+  await page.getByTestId('lock-in').click()
+  await expect(page.getByTestId('cpu-slots').locator('.ss-slot.full')).toHaveCount(3)
+  await page.screenshot({ path: 'e2e-out/select-locked.png' })
   await page.getByTestId('confirm').click()
   await expect(page.getByTestId('brief')).toBeVisible()
   // the deck picker starts on the suggested nine; dropping one blocks Deploy until a ninth is picked again
   await expect(page.getByTestId('deck-count')).toHaveText('9 / 9')
-  await page.locator('.deck-card.on').first().click()
+  await page.locator('.forge-card.tactics.on').first().click()
   await expect(page.getByTestId('deck-count')).toHaveText('8 / 9')
   await expect(page.getByTestId('deploy')).toBeDisabled()
-  await page.locator('.deck-card:not(.on)').last().click()
+  await page.locator('.forge-card.tactics:not(.on)').last().click()
   await expect(page.getByTestId('deploy')).toBeEnabled()
   await page.screenshot({ path: 'e2e-out/brief-deck.png', fullPage: true })
   await page.getByTestId('deploy').click()
@@ -153,6 +163,96 @@ test.describe('touch tablet', () => {
     expect(768 - (bar!.y + bar!.height)).toBeGreaterThanOrEqual(26)
     await page.screenshot({ path: 'e2e-out/tablet-bar.png' })
   })
+})
+
+test('a pattern weapon shows every hex it will hit, and a second tap fires it', async ({ page }) => {
+  // hotseat with the shoulder-cannon gunner: let the AI play both sides until the gunner can fire its pattern
+  await page.goto('./?squad=u14,u15,u01&foe=u05,u04,u06&ai=none&auto=1&speed=instant&seed=e2e-pattern')
+  await page.waitForFunction(() => window.__game?.state() !== null && window.__game!.camera() !== null)
+  const found = await page.evaluate(async () => {
+    const g = window.__game!
+    for (let i = 0; i < 400; i++) {
+      while (g.busy()) await new Promise((r) => setTimeout(r, 20))
+      const s = g.state()!
+      if (g.over()) return false
+      const shot = g.legal().find((a) => a.type === 'attack' && a.areaHexes && s.units[a.uid]!.side === 0)
+      if (shot && !s.pending) return true
+      const a = g.aiChoose()
+      if (!a) return false
+      g.take(a)
+      await new Promise((r) => setTimeout(r, 10))
+    }
+    return false
+  })
+  expect(found).toBe(true)
+  await page.waitForTimeout(400)
+  const shot = await page.evaluate(() => window.__game!.legal().find((a) => a.type === 'attack' && a.areaHexes)!)
+  await page.getByTestId('weapon-' + shot.wid).click()
+  const t = shot.targets![0]!
+  const at = await page.evaluate((ref) => {
+    const s = window.__game!.state()!
+    const h = ref.kind === 'unit' ? s.units[ref.id]!.hex! : s.garrisons[ref.id]!.hex
+    return { ...window.__game!.hexToScreen(h.q, h.r)!, h }
+  }, t)
+  const before = await page.evaluate(() => window.__game!.state()!.log.length)
+  // the first tap previews the pattern and fires nothing
+  await page.mouse.click(at.x, at.y)
+  await page.waitForTimeout(500)
+  await page.screenshot({ path: 'e2e-out/pattern-preview.png' })
+  expect(await page.evaluate(() => window.__game!.state()!.log.length)).toBe(before)
+  // the second tap on the same hex fires
+  await page.mouse.click(at.x, at.y)
+  await page.waitForFunction((n) => window.__game!.state()!.log.slice(n).some((e) => e.t === 'attack'), before, { timeout: 30_000 })
+})
+
+test('a remote weapon command rings its hexes, and a tap places the drone', async ({ page }) => {
+  await page.goto('./?squad=u10,u13,u14&foe=u05,u04,u06&auto=1&speed=instant&seed=e2e-drone')
+  await page.waitForFunction(() => window.__game?.state() !== null && !window.__game!.busy() && window.__game!.legal().some((a) => a.type === 'deploy'), null, { timeout: 30_000 })
+  // deploy whoever is first; the guardian (u10) carries the drone command once it is on the board
+  const ok = await page.evaluate(async () => {
+    const g = window.__game!
+    for (let i = 0; i < 200; i++) {
+      while (g.busy()) await new Promise((r) => setTimeout(r, 20))
+      if (g.legal().some((a) => a.type === 'command' && a.aid === 'u10d')) return true
+      const a = g.legal().find((x) => x.type === 'deploy') ?? g.aiChoose()
+      if (!a) return false
+      g.take(a)
+      await new Promise((r) => setTimeout(r, 10))
+    }
+    return false
+  })
+  expect(ok).toBe(true)
+  await page.waitForTimeout(400)
+  await page.getByTestId('cmd-u10d').click()
+  await expect(page.getByTestId('act-pop')).toBeVisible()
+  await page.waitForTimeout(300)
+  await page.screenshot({ path: 'e2e-out/drone-picks.png' })
+  // a ringed hex in the clear middle of the screen, away from the panels and the action bar's description
+  const { to, p } = await page.evaluate(() => {
+    const g = window.__game!
+    const opts = g.legal().filter((a) => a.type === 'command' && a.aid === 'u10d').map((a) => ({ to: a.to!, p: g.hexToScreen(a.to!.q, a.to!.r)! }))
+    const clear = opts.filter((o) => o.p.x > 160 && o.p.x < innerWidth - 320 && o.p.y > 120 && o.p.y < innerHeight - 260)
+    return (clear[0] ?? opts[0])!
+  })
+  await page.mouse.click(p.x, p.y)
+  await page.waitForFunction(() => {
+    const s = window.__game!.state() as unknown as { remotes: Record<string, { hex: unknown }> }
+    return Object.values(s.remotes).some((r) => r.hex)
+  })
+  await page.waitForTimeout(800)
+  await page.evaluate((h) => window.__game!.setView({ zoom: 0.8, focus: h } as never), to).catch(() => {})
+  await page.waitForTimeout(600)
+  await page.screenshot({ path: 'e2e-out/drone-placed.png' })
+})
+
+test('the character select fits a phone in landscape', async ({ page }) => {
+  await page.setViewportSize({ width: 844, height: 390 })
+  await page.goto('./')
+  await expect(page.getByTestId('select')).toBeVisible()
+  await page.waitForTimeout(500)
+  await page.screenshot({ path: 'e2e-out/select-phone.png' })
+  const lock = await page.getByTestId('lock-in').boundingBox()
+  expect(lock!.y + lock!.height).toBeLessThanOrEqual(390)
 })
 
 test('a deploying machine flies in from behind its Base', async ({ page }) => {

@@ -43,6 +43,22 @@ export function describe(s: GameState, e: LogEntry): string | null {
       return who(s, e.uid) + ' is knocked into something.'
     case 'game_over':
       return 'Game over.'
+    case 'remote_deployed':
+      return 'A remote weapon deploys.'
+    case 'remote_repositioned':
+      return 'A remote weapon repositions.'
+    case 'remote_destroyed':
+      return 'A remote weapon is destroyed.'
+    case 'swap':
+      return who(s, e.uid) + ' swaps in to take the attack.'
+    case 'reroll':
+      return e.setCrit ? 'A die is set to a critical.' : 'Misses are rerolled.'
+    case 'reposition':
+      return who(s, e.uid) + ' repositions.'
+    case 'upgrade_moved':
+      return 'Upgrades change hands.'
+    case 'energy_taken':
+      return who(s, e.uid) + ' takes Energy.'
     default:
       return null
   }

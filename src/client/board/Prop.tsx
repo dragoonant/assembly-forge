@@ -5,15 +5,17 @@
 import { useGLTF } from '@react-three/drei'
 import { Component, Suspense, useMemo, type ReactNode } from 'react'
 import { Box3, Vector3, type Object3D } from 'three'
+import { smoothNormals } from './smoothNormals'
 
 /** Props with a finished model. Add a name here in the same commit as its GLB. */
-export const ENABLED_PROPS: readonly string[] = ['objective', 'garrison', 'base', 'crate', 'energy', 'wreck_a', 'wreck_b']
+export const ENABLED_PROPS: readonly string[] = ['objective', 'garrison', 'base', 'crate', 'energy', 'wreck_a', 'wreck_b', 'rws_shield', 'rws_bird', 'rws_blade']
 
 export const propUrl = (name: string): string => import.meta.env.BASE_URL + 'assets/models/props/' + name + '.glb'
 
 function PropModel({ name, width, height }: { name: string; width?: number; height?: number }) {
   const gltf = useGLTF(propUrl(name))
   const node = useMemo(() => {
+    smoothNormals(gltf.scene)
     const root: Object3D = gltf.scene.clone(true)
     const size = new Box3().setFromObject(root).getSize(new Vector3())
     const across = Math.max(size.x, size.z)

@@ -3,6 +3,8 @@
 // Nothing outside this file imports from src/engine, src/content or src/ai.
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import * as AIJs from '../ai/ai.js'
+import * as SquadJs from '../ai/squad.js'
+import * as RngJs from '../engine/rng.js'
 import * as TextJs from '../content/abilitytext.js'
 import * as NamesJs from '../content/names.js'
 import * as SkirmishJs from '../content/scenarios/skirmish.js'
@@ -211,8 +213,33 @@ export const Packs = {
 }
 export const SCENARIO_ID: string = Skirmish.SCENARIO_ID
 
-export function newSkirmish(seed: string, playerTeam?: string, enemyTeam?: string, decks?: [string[] | null, string[] | null]): GameState {
-  return State.createGame(Skirmish.skirmish({ seed, playerTeam, enemyTeam, decks })) as GameState
+/**
+ * A skirmish between two squads of three unit ids (see `Squads`); a missing or illegal squad falls back to a default.
+ * A string in place of a squad is read as a preset team id, the older way to choose (older tests still use it).
+ */
+export function newSkirmish(seed: string, playerSquad?: string[] | string, enemySquad?: string[] | string, decks?: [string[] | null, string[] | null]): GameState {
+  const squad = (x?: string[] | string) => (Array.isArray(x) ? x : undefined)
+  const team = (x?: string[] | string) => (typeof x === 'string' ? x : undefined)
+  return State.createGame(Skirmish.skirmish({
+    seed, playerSquad: squad(playerSquad), enemySquad: squad(enemySquad), playerTeam: team(playerSquad), enemyTeam: team(enemySquad), decks,
+  })) as GameState
+}
+
+export type Difficulty = 'random' | 'easy' | 'hard'
+
+/**
+ * Squad building. A squad is any `size` units from `pool()`, each at most once unless it has the `mass-produced` trait.
+ * `pick` is the AI's squad picker: `random` is any legal squad, `easy` picks units the player's squad counters well,
+ * `hard` counter-picks it, both from the AI self-play matchup table; the seed string makes it reproducible.
+ */
+export const Squads = {
+  /** The menu order: all fifteen built-in units, or the active pack's. */
+  pool: (): string[] => (UnitsJs as any).pool(),
+  size: (UnitsJs as any).SQUAD_SIZE as number,
+  canAdd: (squad: string[], defId: string): boolean => (UnitsJs as any).canAdd(squad, defId),
+  legal: (squad: string[]): boolean => (UnitsJs as any).isLegalSquad(squad),
+  pick: (pool: string[], player: string[], difficulty: Difficulty, seed: string): string[] =>
+    (SquadJs as any).pickSquad(pool, player, difficulty, (RngJs as any).seedFrom(seed)).squad,
 }
 
 /** Deck building: the cards a squad may take, the suggested nine, and whether a choice is legal. */
@@ -273,3 +300,63 @@ export function sideName(side: Side): string {
 }
 
 export const UI = Names.UI as Record<string, string>
+
+/** A trait's display name (`Names.TRAITS`). */
+export const traitName = (id: string): string => Names.traitName(id)
+
+/**
+ * A Remote Weapon System: a board piece (HP 1, a VP value) owned by the unit that deploys it. `hex` is null while it is
+ * in its owner's supply. It blocks nothing and causes no Engagement, but no unit may end a move on it. An attack on it
+ * has `target: {kind: 'remote', id: rid}`.
+ */
+export interface RemoteWeapon {
+  rid: string
+  defId: string
+  owner: string
+  side: Side
+  hex: Axial | null
+  hp: number
+  maxHp: number
+  vp: number
+  abilities: Ability[]
+}
+
+/** Every RWS in the game, deployed or in a supply, in declaration order. */
+export const remotesOf = (s: GameState): RemoteWeapon[] => {
+  const st = s as unknown as { remotes?: Record<string, RemoteWeapon>; remoteOrder?: string[] }
+  return (st.remoteOrder ?? []).map((rid) => st.remotes![rid]!)
+}
+/** The RWS on a hex, or null. */
+export const remoteAt = (s: GameState, h: Axial): RemoteWeapon | null => State.remoteAt(s, h)
+
+/**
+ * The newer pending decisions, beside `Pending`:
+ *  - `choose`: an effect asks for a choice (`what` says which). Each option is a `choose` action naming `targetUid`
+ *    (a unit), `to` (a hex) and/or `aid` (an Upgrade id: shield, speed, strength, accuracy); RWS steps also carry
+ *    `uid` (the RWS id). A `pass` ends the choice where the card says "up to".
+ *  - `window` with `window: 'enemyMoved'`: the mover's opponent may answer a unit ending its movement nearby (`mover`).
+ *  - `react_move` with `toward`: a one-hex step closer to that hex.
+ *  - `react_attack` with `only` (the one target allowed) and `tlMod` (added to the chosen weapon's Timeline cost).
+ */
+export interface ChoosePending {
+  kind: 'choose'
+  what: 'gainUpgrade' | 'spreadUpgrades' | 'transfer' | 'takeUpgrade' | 'destroyUpgrade' | 'repositionRemotes' | 'remoteStrike'
+  side: Side
+  uid?: string
+  target?: string
+  left: number
+  queue?: string[]
+}
+
+/** A unit's printed definition (stats, weapons, abilities, traits) without a game: for the squad-select grid and cards. */
+export interface UnitDef {
+  defId: string
+  hp: number
+  vp: number
+  tl: number
+  traits?: string[]
+  weapons: Weapon[]
+  abilities: Ability[]
+  standIn?: string
+}
+export const unitDef = (defId: string): UnitDef => (UnitsJs as any).def(defId) as UnitDef

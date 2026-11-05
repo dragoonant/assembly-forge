@@ -171,6 +171,7 @@ export function scoreAction(state, action, side) {
     case 'displace_stop':
     case 'trigger':
     case 'trigger_skip': return scoreDisplace(state, action, side);
+    case 'choose':   return scoreChoose(state, action, side);
     case 'pass':     return 0;
     case 'command':  return scoreCommand(state, action, side);
     case 'tactics':  return scoreTactics(state, action, side);
@@ -206,7 +207,7 @@ export function scoreAttack(state, action, side) {
   if (!tHex) return -TUNING.wasted;
 
   const shift = Combat.accuracyShift(state, attacker, w, tHex);
-  const dice = Combat.strengthOf(state, attacker, w);
+  const dice = Combat.strengthOf(state, attacker, w, undefined, [action.target]);
   let expected = Combat.expectedHits(state.rules, dice, shift);
 
   const critP = Combat.critChance(state.rules, dice);
@@ -214,7 +215,12 @@ export function scoreAttack(state, action, side) {
 
   let value;
 
-  if (action.target.kind === 'garrison') {
+  if (action.target.kind === 'remote') {
+    // a Remote Weapon System has 1 HP: one hit removes it and scores its VP
+    const r = state.remotes[action.target.id];
+    const anyHit = 1 - Math.pow(1 - Math.min(1, expected / Math.max(1, dice)), dice);
+    value = anyHit * ((r ? r.vp : 2) * Evaluate.WEIGHTS.vp * 0.8 + 8);
+  } else if (action.target.kind === 'garrison') {
     // A garrison dies to any damage at all, so what matters is the chance of
     // landing a single hit rather than how much is expected.
     const anyHit = 1 - Math.pow(1 - Math.min(1, expected / Math.max(1, dice)), dice);
@@ -293,11 +299,23 @@ export function cardCostNow(state) {
 }
 
 export function scoreResponse(state, action, side) {
-  const c = state.players[side].tactics.hand.find(function (x) { return x.cid === action.cid; });
   const a = state.attacks && state.attacks[state.attacks.length - 1];
+  let c;
+  let src = null;
+  if (action.aid) {
+    // a unit's own Response ability: no card is spent, but Energy may be
+    src = state.units[action.uid];
+    c = src && Effects.ability(src, action.aid);
+  } else {
+    c = state.players[side].tactics.hand.find(function (x) { return x.cid === action.cid; });
+  }
   if (!c) return -TUNING.wasted;
   let value = 0;
+  const attacking = a && a.side === side;
+  const expectedHits = a ? (a.results && a.results.length ? a.results.reduce(function (m, x) { return Math.max(m, x.hits); }, 0) : (a.dice || 0) * 0.55) : 0;
   for (const e of c.effects) {
+    const more = scoreAttackResponse(state, a, e, action, side, src, attacking, expectedHits);
+    if (more !== null) { value += more; continue; }
     if (e.k === 'surviveDefeat') value += 40;
     else if (e.k === 'reduceDamage') {
       // after the roll the hits are known; before it, assume an average roll
@@ -310,7 +328,92 @@ export function scoreResponse(state, action, side) {
       value += a ? (a.targets.length * e.n - (me && me.hp <= e.n ? 99 : e.n)) * TUNING.damage : -1;
     } else if (e.k === 'stripTargetUpgrade' || e.k === 'stripAttackerUpgrade') value += 2;
   }
+  if (action.aid) return value - (c.energy || 0) * 3;
   return value - cardCostNow(state);
+}
+
+/**
+ * The value of one of the newer response effects on the attack in progress, or null for a kind scored elsewhere.
+ * Rough on purpose: each is a readable rule of thumb in the same units as scoreAttack.
+ */
+function scoreAttackResponse(state, a, e, action, side, src, attacking, expectedHits) {
+  const D = TUNING.damage;
+  switch (e.k) {
+    case 'attackStrength': {
+      if (!attacking) return -1;
+      let n = e.n;
+      if (e.per === 'ownUpgrade') n = e.n * (src ? State.upgradeCount(src, e.kind) : 0);
+      else if (e.per === 'alliesInRange') {
+        n = e.n * (src ? State.livingUnits(state, side).filter(function (o) {
+          return o.uid !== src.uid && o.hex && Hex.distance(o.hex, src.hex) <= e.range;
+        }).length : 0);
+      } else if (e.per === 'remotesAdjTarget') {
+        n = 0;
+        const t = a && a.targets[0] && Combat.targetHex(state, a.targets[0]);
+        if (t) n = e.n * State.deployedRemotes(state, side).filter(function (r) { return Hex.distance(r.hex, t) === 1; }).length;
+      }
+      return n * D * 0.55;
+    }
+    case 'attackAccuracy':
+      return (attacking ? e.n : -e.n) * (a ? a.dice : 0) * 0.1 * D;
+    case 'setCrit': return attacking ? D * 1.2 + TUNING.critValue : -1;
+    case 'rerollMisses': {
+      if (!attacking || !a || !a.faces) return -1;
+      const misses = Math.max(0, a.faces.length - expectedHits);
+      const n = e.n ? Math.min(e.n, misses) : misses;
+      return n * 0.55 * D + (e.drawIf && n >= e.drawIf ? 10 : 0);
+    }
+    case 'pushTarget': return attacking ? 5 : -1;
+    case 'delayTargets':
+      return a ? a.targets.filter(function (r) { return r.kind === 'unit' && state.units[r.id] && state.units[r.id].side !== side; }).length * 9 : 0;
+    case 'slowTargetsNearRemote': return 10;
+    case 'draw': return 10 * e.n;
+    case 'energyTo': return e.n * 3;
+    case 'counterAttack': return 28;
+    case 'reactAttack': {
+      const u = state.units[action.uid];
+      if (!u) return -TUNING.wasted;
+      const v = scoreAttack(state, { type: 'attack', uid: u.uid, wid: e.wid, target: { kind: 'unit', id: action.targetUid }, free: true }, side);
+      return v - (e.tl || 0) * 4;
+    }
+    case 'challenge': {
+      const c = state.units[action.uid];
+      const d = state.units[action.targetUid];
+      if (!c || !d) return -TUNING.wasted;
+      const risk = function (u) {
+        return expectedHits >= u.hp ? TUNING.killBonus + u.vp * Evaluate.WEIGHTS.vp * 0.5 : expectedHits * D * (0.5 + u.vp / 20);
+      };
+      return risk(d) - risk(c) - 4;
+    }
+    default: return null;
+  }
+}
+
+/**
+ * A step of a choice an effect opened (an Upgrade, a unit, a hex for a Remote Weapon System), judged by applying it:
+ * every choice is deterministic, so a real lookahead costs nothing in reproducibility.
+ */
+export function scoreChoose(state, action, side) {
+  const before = Evaluate.evaluate(state, side);
+  let after;
+  try {
+    after = Apply.apply(state, action);
+  } catch (e) {
+    return -TUNING.wasted;
+  }
+  return Evaluate.evaluate(after, side) - before;
+}
+
+/** Whether the activating unit can attack right now, remembered per state (scoreEffectSet asks once per option). */
+let canAttackMemo = { state: null, value: false };
+function canAttackNow(state) {
+  if (canAttackMemo.state !== state) {
+    canAttackMemo = {
+      state: state,
+      value: Actions.legalActions(state).some(function (x) { return x.type === 'attack'; })
+    };
+  }
+  return canAttackMemo.value;
 }
 
 /**
@@ -494,9 +597,11 @@ export function scoreTactics(state, action, side) {
  */
 function scoreEffectSet(state, action, a, u) {
 
-  const canAttack = Actions.legalActions(state).some(function (x) {
-    return x.type === 'attack';
-  });
+  const canAttack = canAttackNow(state);
+  const foe = State.opponent(u.side);
+  const enemiesWithin = function (h, range) {
+    return State.livingUnits(state, foe).filter(function (o) { return o.hex && Hex.distance(o.hex, h) <= range; });
+  };
 
   let value = 0;
   for (let i = 0; i < a.effects.length; i++) {
@@ -538,8 +643,9 @@ function scoreEffectSet(state, action, a, u) {
         break;
       case 'damage': {
         const t = action.targetUid ? state.units[action.targetUid] : null;
-        value += e.n * TUNING.damage;
-        if (t && e.n >= t.hp) value += TUNING.killBonus + t.vp * Evaluate.WEIGHTS.vp * 0.5;
+        const n = e.per === 'upgrades' ? u.upgrades.length : e.n;
+        value += n * TUNING.damage;
+        if (t && n >= t.hp) value += TUNING.killBonus + t.vp * Evaluate.WEIGHTS.vp * 0.5;
         break;
       }
       case 'status': {
@@ -549,6 +655,74 @@ function scoreEffectSet(state, action, a, u) {
         else value += TUNING.critValue * 2.5;
         break;
       }
+      // --- the second wave ---
+      case 'speed': value += e.n * 2; break;
+      case 'hover': value += 1; break;
+      case 'rescue': value += state.rules.scoring.garrisonRescueVp * Evaluate.WEIGHTS.vp * 0.5; break;
+      case 'upgradeChoice': value += 18 * (e.n || 1); break;
+      case 'upgradeSpread':
+        value += 15 * Math.min(e.n || 3, State.livingUnits(state, u.side).filter(function (o) {
+          return o.hex && (!e.trait || (o.traits || []).indexOf(e.trait) !== -1);
+        }).length);
+        break;
+      case 'transfer': value -= TUNING.wasted; break;
+      case 'steal': {
+        const t = action.targetUid ? state.units[action.targetUid] : null;
+        if (!t) { value -= TUNING.wasted; break; }
+        const mult = t.side === u.side ? 0 : 2;
+        value += (Math.min(e.energy || 0, t.energy) * 3 + Math.min(e.upgrades || 0, t.upgrades.length) * 15) * mult;
+        break;
+      }
+      case 'destroyUpgrades': {
+        const t = action.targetUid ? state.units[action.targetUid] : null;
+        const n = t ? (e.n === 'all' ? t.upgrades.length : Math.min(e.n, t.upgrades.length)) : 0;
+        value += n ? n * 15 : -TUNING.wasted;
+        break;
+      }
+      case 'statusAll': {
+        const hit = u.hex ? enemiesWithin(u.hex, e.range).filter(function (o) { return o.statuses.indexOf(e.s) === -1; }).length : 0;
+        value += hit ? hit * TUNING.critValue * 2 : -TUNING.wasted;
+        break;
+      }
+      case 'delayNearRemote': {
+        const mine = State.remotesOf(state, u.uid).filter(function (r) { return r.hex; });
+        const n = State.livingUnits(state, foe).filter(function (o) { return o.hex && mine.some(function (r) { return Hex.distance(r.hex, o.hex) === 1; }); }).length;
+        value += n ? n * 10 : -TUNING.wasted;
+        break;
+      }
+      case 'repositionSelf': value += action.to ? 3 : 0; break;
+      case 'damageBonus': value += canAttack ? e.n * TUNING.damage * 1.2 : -TUNING.wasted; break;
+      case 'nextAttackStrength': value += canAttack ? e.n * TUNING.damage * 0.7 : -TUNING.wasted; break;
+      case 'remotesStrike': {
+        const list = e.all ? State.deployedRemotes(state) : State.deployedRemotes(state, u.side);
+        const n = list.filter(function (r) { return enemiesWithin(r.hex, 1).length; }).length;
+        value += n ? n * TUNING.damage * 1.2 : -TUNING.wasted;
+        break;
+      }
+      case 'repositionAllRemotes': value += State.deployedRemotes(state).length * 4; break;
+      case 'placeRemote': {
+        if (!action.to) { value -= TUNING.wasted; break; }
+        const r = state.remotes[u.uid + '.' + e.remote];
+        if (!r) { value -= TUNING.wasted; break; }
+        value += r.hex ? 1 : 10;
+        const allies = State.livingUnits(state, u.side).filter(function (o) { return o.hex && o.uid !== u.uid && Hex.distance(o.hex, action.to) === 1; }).length;
+        const near = enemiesWithin(action.to, 1).length;
+        if (State.remoteAura(r, 'auraReduceDamage')) value += allies * 3 + (Hex.distance(u.hex, action.to) === 1 ? 3 : 0);
+        if (State.remoteAura(r, 'auraAccuracy')) value += near * 4;
+        if ((r.abilities || []).some(function (x) { return x.on === 'placed'; })) value += near * 6;
+        if (enemiesWithin(action.to, 2).length && !near) value -= 3;
+        break;
+      }
+      case 'moveNow': value += e.n * 2; break;
+      case 'rescueMovedAdjacent': {
+        const n = state.garrisonOrder.filter(function (gid) {
+          const g = state.garrisons[gid];
+          return g.alive && g.side === u.side && u.hex && Hex.distance(g.hex, u.hex) <= 6;
+        }).length;
+        value += n ? n * 60 : -TUNING.wasted;
+        break;
+      }
+      case 'draw': value += 10 * e.n; break;
       default:
         break;
     }

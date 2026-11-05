@@ -1,7 +1,7 @@
 // The HUD: DOM over the canvas, never drawn in three (PLAN.md D4). Every button is a legal action, filtered; nothing here
 // knows a rule the engine has not already applied.
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { affordances, hexKey } from '../affordances'
+import { actionHex, affordances, hexKey } from '../affordances'
 import {
   abilitiesOf,
   ability,
@@ -193,6 +193,26 @@ const WINDOW_LABEL: Record<string, string> = {
   afterRoll: 'After the attack roll',
   afterDamage: 'After the attack deals damage',
   wouldBeDefeated: 'Your machine would be destroyed',
+  enemyMoved: 'An enemy ended its move in range',
+}
+
+/** The head line for each kind of choice a card or ability asks for (`pending.kind === 'choose'`). */
+const CHOOSE_LABEL: Record<string, string> = {
+  gainUpgrade: 'Choose an Upgrade to gain',
+  spreadUpgrades: 'Give each machine a different Upgrade',
+  transfer: 'Move Upgrades between the two machines',
+  takeUpgrade: 'Choose an Upgrade to take',
+  destroyUpgrade: 'Choose an Upgrade to destroy',
+  repositionRemotes: 'Move each remote weapon',
+  remoteStrike: 'Choose what each remote weapon strikes',
+}
+
+/** Who or where a targeted play is aimed at, for its button and its line in the description. */
+function placeLabel(game: GameState, a: Action, verb: string): string {
+  if (a.targetUid) return verb + ' on ' + displayName(game.units[a.targetUid]!.defId)
+  if (a.gid) return verb + ' on the Garrison'
+  if (a.to) return verb + ' at the highlighted hex'
+  return verb
 }
 
 interface BarItem {
@@ -259,6 +279,22 @@ function decisionBar(game: GameState, legal: Action[]): { title: string; hint: s
           label: 'Respond',
           items: [
             ...cards.map((a): BarItem => {
+              if (!a.cid) {
+                // a machine's own Response ability: Challenge names the ally it swaps with
+                const u = game.units[a.uid]!
+                const ab = u.abilities.find((x) => x.aid === a.aid)
+                const on = a.targetUid ? displayName(game.units[a.targetUid]!.defId) : ''
+                return {
+                  key: 'ra' + a.uid + a.aid + (a.targetUid ?? ''),
+                  label: Text.abilityName(a.aid),
+                  sub: displayName(u.defId) + (on ? ' · ' + on : ''),
+                  cls: 'ability',
+                  testid: 'respond-' + a.aid + (a.targetUid ? '-' + a.targetUid : ''),
+                  info: ab ? Text.abilityText(ab) : '',
+                  run: () => take(a),
+                  runLabel: on ? 'use it with ' + on : 'use it',
+                }
+              }
               const c = hand.find((x) => x.cid === a.cid)!
               const on = a.targetUid ? displayName(game.units[a.targetUid]!.defId) : ''
               return {
@@ -273,6 +309,36 @@ function decisionBar(game: GameState, legal: Action[]): { title: string; hint: s
               }
             }),
             ...passItem,
+          ],
+        },
+      ],
+    }
+  }
+  if ((p.kind as string) === 'choose') {
+    const what = (p as unknown as { what: string }).what
+    const opts = legal.filter((a) => a.type === 'choose')
+    const placed = opts.filter((a) => actionHex(game, a))
+    const keys = new Set(placed.map((a) => hexKey(actionHex(game, a)!)))
+    // on the board when every option has its own hex; otherwise one button each
+    const onBoard = placed.length === opts.length && keys.size === opts.length
+    const skip = legal.find((a) => a.type === 'pass')
+    return {
+      title: CHOOSE_LABEL[what] ?? 'Choose',
+      hint: onBoard ? 'Tap a cyan-ringed hex or machine.' : 'Pick one below.',
+      groups: [
+        {
+          label: 'Choose',
+          items: [
+            ...(onBoard
+              ? []
+              : opts.map((a, i): BarItem => ({
+                  key: 'ch' + i,
+                  label: (a.aid ? displayName(a.aid) : 'Option ' + (i + 1)) + (a.targetUid ? ' · ' + displayName(game.units[a.targetUid]!.defId) : ''),
+                  cls: 'ability',
+                  testid: 'choose-' + i,
+                  run: () => take(a),
+                }))),
+            ...(skip ? [{ key: 'pass', label: 'Done', cls: 'end', testid: 'act-pass', run: () => take(skip) }] : []),
           ],
         },
       ],
@@ -338,7 +404,7 @@ function turnBar(game: GameState, u: EngineUnit, legal: Action[], armed: string 
     return {
       key: 'w' + w.wid,
       label: displayName(w.wid),
-      sub: (shots[0]?.free ? 'free' : w.tlCost + ' TL') + ' · ◇' + w.range + ' · ⬢' + w.strength,
+      sub: (shots[0]?.free ? 'free' : w.tlCost + ' TL') + ' · ' + ((w as typeof w & { area?: unknown }).area ? 'area' : '◇' + w.range) + ' · ⬢' + w.strength,
       cls: 'weapon',
       testid: 'weapon-' + w.wid,
       dim: !shots.length,
@@ -349,11 +415,13 @@ function turnBar(game: GameState, u: EngineUnit, legal: Action[], armed: string 
       info: (
         <>
           <div>
-            {shots[0]?.free ? 'Free' : w.tlCost + ' TL'} · range {w.range} · {w.strength} dice{w.ignoreLos ? ' · ignores line of sight' : ''}
+            {shots[0]?.free ? 'Free' : w.tlCost + ' TL'} · {(w as typeof w & { area?: unknown }).area ? 'area pattern' : 'range ' + w.range} · {w.strength} dice{w.ignoreLos ? ' · ignores line of sight' : ''}
           </div>
           {w.crit && <div>Crit: {Names.critText(w.crit)}</div>}
           <div className="dim">
-            {shots.length
+            {shots.length && shots[0]!.areaHexes
+              ? 'A pattern attack: hover or tap a red-ringed target to see every hex it hits, then tap it again to fire.'
+              : shots.length
               ? shots.length === 1
                 ? 'One target in range.'
                 : shots.length + ' targets: tap one on the board.'
@@ -372,7 +440,7 @@ function turnBar(game: GameState, u: EngineUnit, legal: Action[], armed: string 
   for (const a of legal.filter((x) => x.type === 'command')) byAid.set(a.aid!, [...(byAid.get(a.aid!) ?? []), a])
   const commands = [...byAid.entries()].map(([aid, acts]): BarItem => {
     const def = ability(u, aid)
-    const targeted = acts.length > 1 || Boolean(acts[0]!.targetUid)
+    const targeted = acts.length > 1 || Boolean(acts[0]!.targetUid || acts[0]!.to || acts[0]!.gid)
     return {
       key: 'c' + aid,
       label: Text.abilityName(aid),
@@ -382,7 +450,7 @@ function turnBar(game: GameState, u: EngineUnit, legal: Action[], armed: string 
       info: Text.abilityText(def),
       run: targeted ? undefined : () => take(acts[0]!),
       runLabel: 'Use',
-      choices: targeted ? acts.map((a) => ({ label: 'Use on ' + displayName(game.units[a.targetUid!]!.defId), run: () => take(a), act: a })) : undefined,
+      choices: targeted ? acts.map((a) => ({ label: placeLabel(game, a, 'Use'), run: () => take(a), act: a })) : undefined,
     }
   })
 
@@ -437,11 +505,11 @@ function handGroup(game: GameState, side: Side, legal: Action[], armed: string |
         item.quick = () => take(plays[0]!)
         item.quickLabel = 'play it on ' + targetName(game, plays[0]!)
       }
-    } else if (plays.length === 1) {
+    } else if (plays.length === 1 && !(plays[0]!.targetUid || plays[0]!.to || plays[0]!.gid)) {
       item.run = () => take(plays[0]!)
       item.runLabel = 'Play'
-    } else if (plays.length > 1) {
-      item.choices = plays.map((a) => ({ label: 'Play on ' + displayName(game.units[a.targetUid!]!.defId), run: () => take(a), act: a }))
+    } else if (plays.length >= 1) {
+      item.choices = plays.map((a) => ({ label: placeLabel(game, a, 'Play'), run: () => take(a), act: a }))
     }
     return item
   })
@@ -462,8 +530,7 @@ function confirmLabel(i: BarItem): string {
 
 /** A targeted choice whose target stands on the board, so a tap on its hex can take it. */
 function onBoard(game: GameState, c: { act: Action }): boolean {
-  const uid = c.act.targetUid
-  return Boolean(uid && game.units[uid]?.hex)
+  return Boolean(actionHex(game, c.act))
 }
 
 function ActionBar({ game }: { game: GameState }) {
@@ -499,10 +566,13 @@ function ActionBar({ game }: { game: GameState }) {
   if (!spectating && (!deciding || game.pending?.kind !== 'window')) groups = [...groups, handGroup(game, handSide, af.legal, armed, hotseat)]
   const popNow = groups.flatMap((g) => g.items).find((i) => i.key === openKey) ?? null
   const pickKey = popNow && popNow.choices ? popNow.key + '|' + popNow.choices.length : null
+  const choosing = deciding && (game.pending?.kind as string) === 'choose'
   useEffect(() => {
-    setStore({ picks: popNow && popNow.choices ? popNow.choices.filter((c) => onBoard(game, c)).map((c) => c.act) : null })
+    if (popNow && popNow.choices) setStore({ picks: popNow.choices.filter((c) => onBoard(game, c)).map((c) => c.act) })
+    else if (choosing) setStore({ picks: af.legal.filter((a) => a.type === 'choose' && actionHex(game, a)) })
+    else setStore({ picks: null })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pickKey, game])
+  }, [pickKey, game, choosing])
   if (!title && !groups.length) return null
 
   const all = groups.flatMap((g) => g.items)
@@ -538,11 +608,14 @@ function ActionBar({ game }: { game: GameState }) {
           <div className="pop-body">{pop.info}</div>
           {pop.choices && pop.choices.length > 1 && (
             <div className="pop-confirm">
-              Tap a highlighted machine on the board:{' '}
-              {pop.choices
-                .filter((c) => onBoard(game, c))
-                .map((c) => c.label.replace(/^(Use|Play) on /, ''))
-                .join(', ')}
+              Tap a cyan-ringed target on the board
+              {pop.choices.some((c) => c.act.targetUid)
+                ? ': ' +
+                  pop.choices
+                    .filter((c) => onBoard(game, c) && c.act.targetUid)
+                    .map((c) => displayName(game.units[c.act.targetUid!]!.defId))
+                    .join(', ')
+                : ''}
               .
             </div>
           )}

@@ -23,7 +23,7 @@
  * or that test will tell you off.
  */
 
-import { STATUSES, UPGRADES, WEAPONS, displayName } from './names.js';
+import { ABILITY_NAMES, STATUSES, TACTICS_NAMES, TRAITS, UPGRADES, WEAPONS, displayName } from './names.js';
 import { activePack } from './packs.js';
 
 /** Ability names, by the ids in `src/content/units.js`. */
@@ -33,7 +33,8 @@ export const ABILITIES = Object.freeze({
   u03c: 'Overcharge',       u03o: 'Spotter Link',
   u04c: 'Mire',             u04o: 'In Close',
   u05c: 'Second Swing',     u05o1: 'Running Hot', u05o2: 'Redline',
-  u06c: 'Jamming Field',    u06o: 'Dug In'
+  u06c: 'Jamming Field',    u06o: 'Dug In',
+  ...ABILITY_NAMES
 });
 
 /**
@@ -45,7 +46,8 @@ export const TACTICS = Object.freeze({
   t04: 'Power Siphon',      t05: 'Field Repair',    t06: 'Fouling Charge',
   t07: 'Opportunist',       t08: 'Sensor Flood',    t09: 'Hold Fast',
   t10: 'Follow Through',    t11: 'Fire For Effect', t12: 'Relief Column',
-  t13: 'Slipstream',        t14: 'Lock Down'
+  t13: 'Slipstream',        t14: 'Lock Down',
+  ...TACTICS_NAMES
 });
 
 /**
@@ -70,7 +72,8 @@ const WINDOWS = Object.freeze({
   beforeRoll: 'before the attack roll',
   afterRoll: 'after the attack roll',
   afterDamage: 'after the attack deals damage',
-  wouldBeDefeated: 'when your unit would be defeated'
+  wouldBeDefeated: 'when your unit would be defeated',
+  enemyMoved: 'after an enemy ends its movement within range of this unit'
 });
 
 /** A granted additional action, as a phrase. */
@@ -88,8 +91,14 @@ const EVENTS = Object.freeze({
   rescue: 'after this unit rescues a garrison',
   destroy: 'after this unit destroys a target',
   damaged: 'after this unit takes damage',
-  dash: 'after this unit dashes'
+  dash: 'after this unit dashes',
+  moved: 'after this unit ends its movement',
+  placed: 'after this is deployed or repositioned'
 });
+
+function upgradeName(k) { return UPGRADES[k] || k; }
+function traitName(k) { return TRAITS[k] || k; }
+function plural(n, one, many) { return n === 1 ? one : many; }
 
 /**
  * One effect, as a phrase with no leading capital and no full stop.
@@ -114,9 +123,9 @@ export function effectPhrase(e, timing) {
     case 'strength':    return signed(e.n) + ' strength' + scope;
     case 'accuracy':    return signed(e.n) + ' accuracy' + scope;
     case 'move':        return 'move ' + e.n;
-    case 'energy':      return 'gain ' + e.n + ' Energy';
+    case 'energy':      return (e.ifFullHp ? 'then, if it has full HP, ' : '') + 'gain ' + e.n + ' Energy';
     case 'heal':        return 'repair ' + e.n + ' damage';
-    case 'damage':      return 'deal ' + e.n + ' damage';
+    case 'damage':      return e.per === 'upgrades' ? 'deal damage equal to the upgrades on this unit' : 'deal ' + e.n + ' damage';
     case 'status':      return 'apply ' + (STATUSES[e.s] || e.s);
     case 'push':        return 'push the target ' + e.n + (e.n === 1 ? ' hex' : ' hexes');
     case 'pull':        return 'pull the target ' + e.n + (e.n === 1 ? ' hex' : ' hexes');
@@ -134,15 +143,63 @@ export function effectPhrase(e, timing) {
     case 'critFrom':    return 'attack rolls of ' + e.n + ' or more are critical hits';
     case 'dashBonus':   return 'Dash moves ' + e.n + (e.n === 1 ? ' more hex' : ' more hexes');
     case 'strengthVsStatus': return signed(e.n) + ' strength against a target with a status effect';
-    case 'attackStrength': return signed(e.n) + ' strength on this attack';
+    case 'attackStrength':
+      if (e.per === 'ownUpgrade') return signed(e.n) + ' strength on this attack for each ' + upgradeName(e.kind) + ' on this unit';
+      if (e.per === 'alliesInRange') return signed(e.n) + ' strength on this attack for each other allied unit within ' + e.range + ' hexes';
+      if (e.per === 'remotesAdjTarget') return signed(e.n) + ' more strength for each allied remote weapon next to the target';
+      return signed(e.n) + ' strength on this attack';
     case 'attackDamage': return signed(e.n) + ' damage on this attack';
-    case 'reduceDamage': return 'reduce the damage to your unit by ' + e.n;
+    case 'reduceDamage':
+      return 'reduce the damage to your unit by ' + e.n +
+        (e.perRemote ? ', and ' + e.perRemote + ' more for each allied remote weapon within ' + (e.range || 2) + ' hexes of it' : '');
     case 'stripTargetUpgrade': return 'destroy ' + e.n + (e.n === 1 ? ' upgrade' : ' upgrades') + ' on each target';
     case 'stripAttackerUpgrade': return 'destroy ' + e.n + (e.n === 1 ? ' upgrade' : ' upgrades') + ' on the attacker';
     case 'damageAttackerAndTargets': return 'deal ' + e.n + ' damage to the attacker and to each target';
     case 'surviveDefeat':
       return 'it stays at 1 HP instead' + (e.move ? ', Moves ' + e.move : '') +
         (e.attackWid ? ', then makes a ' + displayName(e.attackWid) + ' attack at no Timeline cost' : '');
+    // --- the second wave ---
+    case 'speed':       return 'Advance ' + e.n + plural(e.n, ' more hex', ' more hexes') + scope;
+    case 'hover':       return timing === 'ongoing' ? 'it has Hover' : 'gain Hover' + scope;
+    case 'rescue':      return 'rescue';
+    case 'upgradeChoice': return 'gain ' + e.n + plural(e.n, ' upgrade', ' upgrades') + ' of your choice';
+    case 'upgradeSpread':
+      return 'up to ' + e.n + ' of your ' + (e.trait ? traitName(e.trait) + ' ' : '') +
+        'units on the battlefield each gain a different upgrade of your choice';
+    case 'transfer':    return 'hand upgrades back and forth, one at a time, between this unit and';
+    case 'steal':       return 'take ' + (e.energy || 0) + ' Energy and ' + (e.upgrades || 0) + plural(e.upgrades || 0, ' upgrade', ' upgrades') + ' from';
+    case 'destroyUpgrades': return 'destroy ' + (e.n === 'all' ? 'all upgrades' : 'up to ' + e.n + plural(e.n, ' upgrade', ' upgrades')) + ' on';
+    case 'statusAll':   return 'apply ' + (STATUSES[e.s] || e.s) + ' to each enemy unit within ' + e.range + ' hexes';
+    case 'delayNearRemote': return "each enemy unit next to this unit's remote weapon moves " + e.n + ' Timeline later';
+    case 'repositionSelf': return "reposition this unit next to its remote weapon";
+    case 'damageBonus': return signed(e.n) + ' damage on its attacks' + scope;
+    case 'nextAttackStrength': return signed(e.n) + ' strength on its next attack' + scope;
+    case 'remotesStrike':
+      return (e.all ? 'each remote weapon on the battlefield' : 'each allied remote weapon') + ' deals ' + e.n + ' damage to an enemy unit next to it';
+    case 'repositionAllRemotes': return "reposition every remote weapon on the battlefield, yours and the enemy's, onto empty hexes";
+    case 'placeRemote': return 'deploy or reposition its ' + displayName(e.remote) + ' onto';
+    case 'moveNow':     return 'move ' + e.n + ' at once';
+    case 'rescueMovedAdjacent': return 'then rescue each allied garrison it moved next to';
+    case 'damageMovedAdjacent': return 'deal ' + e.n + ' damage to each enemy it moved next to';
+    case 'draw':        return 'draw ' + e.n + plural(e.n, ' card', ' cards');
+    case 'noEnemyResponses': return "enemies can't use Response abilities or cards while this unit is attacking or being attacked";
+    case 'auraReduceDamage': return 'allies next to this take ' + e.n + ' less damage from enemy attacks';
+    case 'auraAccuracy': return signed(e.n) + ' accuracy for allies attacking an enemy next to this';
+    case 'attackAccuracy': return signed(e.n) + ' accuracy on this attack';
+    case 'setCrit':     return 'set ' + e.n + plural(e.n, ' die', ' dice') + ' to a critical';
+    case 'rerollMisses':
+      return (e.n ? 'reroll up to ' + e.n + ' misses' : 'reroll every miss') +
+        (e.drawIf ? ', and draw ' + (e.draw || 1) + ' card if ' + e.drawIf + ' or more were rerolled' : '');
+    case 'pushTarget':  return 'push the target ' + e.n + plural(e.n, ' hex', ' hexes');
+    case 'delayTargets': return 'each target unit moves ' + e.n + ' Timeline later';
+    case 'slowTargetsNearRemote': return "apply " + (STATUSES.slow || 'slow') + " to each target next to this unit's remote weapon";
+    case 'energyTo':    return 'that unit gains ' + e.n + ' Energy';
+    case 'challenge':
+      return 'a unit that is not under attack swaps places with an attacked ally within ' + (e.range || 2) + ' hexes and becomes the target';
+    case 'counterAttack':
+      return 'that unit attacks the attacker for ' + Math.abs(e.tl || 0) + ' Timeline ' + ((e.tl || 0) < 0 ? 'less than' : 'more than') + " its weapon's cost";
+    case 'reactAttack':
+      return 'this unit makes a ' + displayName(e.wid) + ' attack against it for ' + (e.tl || 0) + ' Timeline';
     default:
       throw new Error('No description for effect kind "' + e.k +
         '". Add one here in the same commit as the engine change.');
@@ -178,6 +235,14 @@ export function conditionPhrase(when) {
       parts.push('you have rescued ' + when.rescued + ' or more garrisons');
     } else if (k === 'attackedWith') {
       parts.push('this unit has attacked with ' + displayName(when.attackedWith) + ' this activation');
+    } else if (k === 'hasUpgrade') {
+      parts.push('this unit holds a ' + upgradeName(when.hasUpgrade));
+    } else if (k === 'garrisonsDestroyed') {
+      parts.push('you have destroyed ' + when.garrisonsDestroyed + ' or more enemy garrisons');
+    } else if (k === 'notMoved') {
+      parts.push("this unit hasn't moved this activation");
+    } else if (k === 'ownRemoteDeployed') {
+      parts.push("this unit's remote weapon is on the battlefield");
     } else {
       throw new Error('No description for condition "' + k +
         '". Add one here in the same commit as the engine change.');
@@ -194,9 +259,14 @@ export function conditionPhrase(when) {
 export function targetPhrase(a) {
   if (!a.target || a.target === 'self') return '';
   if (a.target === 'adjacentEnemy') return 'an adjacent enemy';
-  if (a.target === 'enemyInRange') {
-    return 'an enemy within ' + (a.range === undefined ? 1 : a.range) + ' hexes';
-  }
+  const r = a.range === undefined ? 1 : a.range;
+  if (a.target === 'enemyInRange') return 'an enemy within ' + r + ' hexes';
+  if (a.target === 'allyInRange') return 'another allied unit within ' + r + ' hexes';
+  if (a.target === 'unitInRange') return 'another unit within ' + r + ' hexes';
+  if (a.target === 'enemyNearOwnRemote') return 'an enemy unit next to an allied remote weapon';
+  if (a.target === 'allyGarrisonInRange') return 'an allied garrison within ' + r + ' hexes';
+  if (a.target === 'emptyHex') return 'an empty hex within ' + r + ' hexes';
+  if (a.target === 'hexNearOwnRemote') return '';
   throw new Error('No description for target "' + a.target + '".');
 }
 
@@ -221,18 +291,74 @@ export function abilityText(a) {
   let body = join(effects);
 
   const target = targetPhrase(a);
-  if (target) body = body + ' to ' + target;
+  // phrases that end on their object ("take 1 Energy from", "rescue") take the target directly; the rest take "to"
+  if (target) body = body + (/( on| from| onto| and|^rescue)$/.test(body) ? ' ' : ' to ') + target;
 
   const clauses = [];
   if (a.timing === 'response' && a.on) clauses.push(EVENTS[a.on] || 'when triggered');
-  if (a.timing === 'response' && a.window) {
-    clauses.push(WINDOWS[a.window] + (a.role === 'defender' && a.window !== 'wouldBeDefeated' ? ', when your unit is attacked' : a.role === 'attacker' ? ', when your unit attacks' : ''));
+  if (a.timing === 'response' && a.window === 'enemyMoved') {
+    const e = a.effects.find(function (x) { return x.k === 'reactAttack'; });
+    clauses.push('after an enemy ends its movement within ' + ((e && e.range) || 3) + ' hexes of this unit');
+  } else if (a.timing === 'response' && a.window) {
+    clauses.push(WINDOWS[a.window] + whoPhrase(a));
   }
   const cond = conditionPhrase(a.when);
   if (cond) clauses.push(a.timing === 'ongoing' ? 'while ' + cond : 'if ' + cond);
+  const attackCond = attackConditionPhrase(a.attackWhen);
+  if (attackCond) clauses.push('if ' + attackCond);
+  if (a.pickWhen) clauses.push({ lessVp: 'for a defender worth less VP than the attacker', damaged: 'for an ally the attack damaged', counter: 'for a defender that survives and can strike back' }[a.pickWhen]);
 
   let sentence = clauses.length ? capitalise(join(clauses)) + ', ' + body : capitalise(body);
-  return sentence.replace(/\s+/g, ' ').trim() + '.';
+  sentence = sentence.replace(/\s+/g, ' ').trim() + '.';
+  if (a.activeTrait) sentence += ' Only a ' + traitName(a.activeTrait) + ' unit can play this.';
+  return sentence;
+}
+
+/** Who must be attacking (or attacked) for a response to fire, as a trailing clause. */
+function whoPhrase(a) {
+  if (a.window === 'wouldBeDefeated') return '';
+  if (a.role === 'defender') return ', when your unit is attacked';
+  if (a.role !== 'attacker') return '';
+  if (a.who === 'self') return ', when this unit attacks';
+  if (a.who === 'other') return ', when another allied unit within ' + (a.range || 0) + ' hexes attacks';
+  if (a.who === 'any') return ', when this unit or an allied unit within ' + (a.range || 0) + ' hexes attacks';
+  return ', when your unit attacks';
+}
+
+/**
+ * A condition on the attack in progress, as a clause.
+ * @param {?Object} c
+ * @returns {string}
+ */
+export function attackConditionPhrase(c) {
+  if (!c) return '';
+  const parts = [];
+  for (const k of Object.keys(c)) {
+    if (k === 'attackerNearAlly') parts.push('the attacker is within ' + c[k] + ' hexes of another allied unit');
+    else if (k === 'alliesInRange') parts.push('another allied unit is within ' + c[k] + ' hexes');
+    else if (k === 'ownUpgrade') parts.push('this unit holds a ' + upgradeName(c[k]));
+    else if (k === 'damagedEnemies') parts.push('it damaged ' + c[k] + ' or more enemies');
+    else if (k === 'targetNearOwnRemote') parts.push("a target is next to this unit's remote weapon");
+    else if (k === 'unitTarget' || k === 'unitTargets') continue;
+    else throw new Error('No description for attack condition "' + k + '".');
+  }
+  return join(parts);
+}
+
+/**
+ * The weapon's numbers that are not on its stat line, as phrases: strength that grows, effects at a point in the
+ * attack. Empty when there are none.
+ * @param {Object} w
+ * @returns {string[]}
+ */
+export function weaponExtras(w) {
+  const out = [];
+  if (w.strengthPerUpgrade) out.push(signed(w.strengthPerUpgrade.n) + ' strength for each ' + upgradeName(w.strengthPerUpgrade.kind) + ' on this unit');
+  if (w.strengthPerRemoteAdj) out.push(signed(w.strengthPerRemoteAdj) + ' strength for each allied remote weapon next to the target');
+  if (w.strengthPerAlly) out.push(signed(w.strengthPerAlly.n) + ' strength for each other ally within ' + w.strengthPerAlly.range + ' hexes');
+  if (w.alsoAdjacent) out.push('also targets each enemy next to the target');
+  for (const e of w.effects || []) out.push(weaponEffectPhrase(e));
+  return out.map(capitalise);
 }
 
 /**
@@ -249,6 +375,7 @@ export function weaponEffectPhrase(e) {
     case 'captureNear': return when + ', capture an objective the target is on or next to';
     case 'stripUpgrade': return when + ', destroy ' + (e.n || 1) + ' upgrade on the target';
     case 'grantDash': return when + ', make an additional Dash at no Timeline cost';
+    case 'approach': return when + ', move ' + (e.n || 1) + ' toward the target, ignoring terrain penalties';
     default: throw new Error('No description for weapon effect "' + e.k + '".');
   }
 }
@@ -259,7 +386,10 @@ function critPhrase(c) {
   if (c.damage) parts.push('+' + c.damage + ' damage');
   if (c.damagePerCrit) parts.push('+' + c.damagePerCrit + ' damage per critical' + (c.max ? ' (up to +' + c.max + ')' : ''));
   if (c.dice) parts.push('roll ' + c.dice + ' more ' + (c.dice === 1 ? 'die' : 'dice'));
-  if (c.status) parts.push('apply ' + (STATUSES[c.status] || c.status));
+  if (c.status) parts.push((c.afterDamage ? 'after damage, ' : '') + 'apply ' + (STATUSES[c.status] || c.status));
+  if (c.damagePerUpgrade) parts.push('+1 damage per ' + (c.damagePerUpgrade === 'any' ? 'upgrade' : upgradeName(c.damagePerUpgrade)) + ' on this unit' + (c.max ? ' (up to +' + c.max + ')' : ''));
+  if (c.upgrade) parts.push((c.afterDamage ? 'after damage, ' : '') + 'gain a ' + upgradeName(c.upgrade));
+  if (c.damageNearRemote) parts.push('deal ' + c.damageNearRemote + " damage to each enemy next to this unit's remote weapon");
   if (c.move) parts.push('after damage, Move ' + c.move + (c.ignoreEngagement ? ', ignoring Engagement' : ''));
   if (c.repeat) parts.push('after damage, repeat the attack at no Timeline cost (the repeat cannot do this again)');
   return join(parts);

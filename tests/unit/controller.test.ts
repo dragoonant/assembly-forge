@@ -7,7 +7,7 @@ import { getStore, setStore } from '../../src/client/store'
 
 describe('controller', () => {
   it('plays the shot, holds the attack behind the dice panel, then commits it', async () => {
-    setStore({ ai: [false, false], speed: 'normal', myTeam: 't_lance', foeTeam: 't_spear' })
+    setStore({ ai: [false, false], speed: 'normal', mySquad: ['u03', 'u02', 'u01'], foeSquad: ['u05', 'u03', 'u02'] })
     deploy('controller-attack')
     // hotseat: play both sides with a simple policy until an attack is legal
     let guard = 0

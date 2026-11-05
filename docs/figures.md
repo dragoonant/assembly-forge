@@ -225,6 +225,68 @@ Budget: under 1.5 MB per GLB, under 12 MB for all six.
 - After the 3D stage: no fused limbs or missing joints, the crest and fins survived, panel lines still crisp.
 - Reads at the overview: the silhouette, back unit and weapon tell the six apart at 40 px tall.
 
+## The nine new machines (u07 to u15, 2026-11-05)
+
+The owner asked for every released unit (2026-11-04) and approved going straight from concepts to models without a
+concept review, with concepts from the local Flux studio instead of Gemini. Each machine keeps its source unit's role,
+numbers and two weapons, and is designed fresh: no shape, colour scheme or head from the source design.
+
+**Route: FLUX.2 klein in edit mode, with our own `art/concepts/v2-u02-ref.jpg` attached as the style reference** (never
+the owner's kit photo). FLUX.1 dev from text alone was tried on u13 and rejected: it drifted to a famous existing design
+(a forehead V crest and its colour scheme) however the head was described. klein with the reference keeps the house
+proportions and finish and follows the head description. The prompt is the house template above plus the rig pose, with
+"Keep exactly the compact proportions of the machine in the reference image ... but a completely different machine" in
+front, and "the head has no V-shaped crest, no forehead horns and no paired antennas" after the head. u13's first
+crest (two prongs) still read as a V, so it was rerolled with a flat sensor plate. The script is kept with the session
+notes; the picks are `art/concepts/v4-u07.png` to `v4-u15.png` (local only).
+
+| Id | Role | Livery | Head | Back unit | Weapons |
+| --- | --- | --- | --- | --- | --- |
+| u07 | Overdrive ace | Pearl white, glowing cyan seam lines | Narrow helmet, one cyan visor band, a short swept fin | Two folded armour wings with cyan vents | A beam sword; a long heavy energy rifle with a drum magazine |
+| u08 | Salvage walker | Utility yellow and dark grey, hazard stripes | An operator cab with a wide windscreen and two work lamps | A boxy power unit with a cable reel | Two hydraulic clamp arms |
+| u09 | Interceptor | Dark navy and brushed silver, orange stripes | A long pointed sensor nose with twin slit lenses | A flight booster with swept wings | An underarm grenade launcher; a long slim energy rifle |
+| u10 | Guardian | Ivory and deep burgundy, gold trim | A rounded hood with a T-shaped amber visor | A round shield of six hexagonal drone plates | Two hip beam daggers; a compact energy rifle |
+| u11 | Stalker | Matte charcoal and pale lilac | A slim head with a long monocle scope | A docked bird-shaped recon drone | Talon feet; a very long sniper energy rifle |
+| u12 | Duelist | Dark olive and black, red lenses | A wide flat head, one red slit, two swept side blades | A rack of four blade drones | A chain clamp claw; a red energy blade |
+| u13 | Vanguard | Silver grey and crimson | A low box head with a green visor band and a flat sensor plate | A twin-thruster pack with two blade hilts | A energy blade; a energy rifle |
+| u14 | Gunner | Brick red and cream | A goggle head with one visor band and a side dish | Two long shoulder cannons | The shoulder cannons; a compact energy rifle |
+| u15 | Bombard | Olive drab and sand, black treads | A low head with a wide visor and a periscope | A four-tube missile box | Tread units in the shins and forearm twin cannons; the missile box |
+
+Then the same Hunyuan stages as the first six (`~/Hunyuan3D-2/af_picks2.json`, 16k faces, 1024 paint) and `tools/rig/`.
+Free the Flux studio's memory (`POST /api/backend/free`) before the shape stage: the first run started while Flux still
+held the card and every shape ran out of memory.
+
+**Normals.** Hunyuan's texture layout gives every triangle its own vertices, so the exported normals are per face and a
+machine reads faceted up close. `src/client/board/smoothNormals.ts` recomputes them on load (area-weighted, welded by
+position, hard edges kept past 50 degrees), for every model.
+
+**Portraits** are renders of the finished models: `?viewer=<id>&portrait=bust|full` frames the posed model from its
+bounds on a transparent background under a warm key and a cool rim light, and `tools/render-portraits.mjs` writes
+`public/assets/portraits/<id>-bust.webp` (the squad-select tile) and `<id>-full.webp` (the unit card's art).
+
+## Nine more rigged (2026-11-05)
+
+All nine are rigged the same way as the first six and enabled in `ENABLED_MODELS`. The automatic turn was right only
+for u10 (backwards on u07, u09, u11, u13 and u14, sideways on u12, 30 degrees off on u08 and u15), so each `yaw` was set
+by eye and then checked by comparing the depth of the left and right shins and arms, which must match. Each GLB is 1.72
+to 1.79 MB.
+
+| Id | yaw | main / shot hand | shot | Notes |
+| --- | --- | --- | --- | --- |
+| u07 | -6 | R / L | arm | Sword in the right hand juts forward along the floor, as Hunyuan built it; wings claimed to the chest from the sides down to z 0.42, the rear skirt left to the thighs |
+| u08 | 5 | R / R | arm | The cab is the head; the side skirts are claimed to the pelvis, or they stretch with the arms when the clamp is raised |
+| u09 | -1 | R / L | arm | The launcher rides the right forearm and the slim rifle points forward-down from the left hand; the right foot is claimed first because the launcher's end touches it, which leaves a thin sliver in the jump; the left side skirt is claimed to the pelvis, or it stretches up with the aiming arm |
+| u10 | 9 | L / R | arm | The legs stand staggered (left foot forward), so the turn was squared on the chest and helmet; the hex shield is claimed to the chest; the left forearm and dagger are fused to the hip skirt, so the melee swing still stretches a sheet from the arm to the hip |
+| u11 | 3 | L / R | arm | The regenerated shape (7% base cut, no base left; talon feet intact). The rifle stands upright in the right hand with its fork on the floor, claimed in three boxes kept in front of the forearm and toe; the backpack and the docked drone (a separate piece reaching far back, wings above the head) are claimed to the chest |
+| u12 | -6 | R / R | arm | Chain and saber are one long piece from the right hand, so the right arm both swings and aims; aiming the left claw stretched the arm into the skirt; the drone rack (everything above z 0.79 except the head) is claimed to the chest |
+| u13 | 7 | R / L | arm | The rifle butt is fused to the outside of the left foot: the foot claim takes the bottom 0.17 of the rifle, so walking is clean and aiming leaves two thin lines down to the foot; the side skirts are claimed to the pelvis; the blade hilts beside the head follow the chest |
+| u14 | 1 | L / R | mount | The shoulder cannons are claimed to the chest (everything above z 0.77 except the head) and the shot braces rather than aims; the blade in the left hand points forward-down |
+| u15 | 12 | R / R | mount | The forearm cannons are claimed to the hands; the missile box and the round back unit follow the chest; the treads stay with the shins |
+
+**u11 was regenerated.** The first shape's 2% base cut left the whole display base fused under both soles, and its rifle
+and drone came out as a separate piece touching no hand. No claim can hold a base still (every bone moves), so the
+concept was redone with the rifle in the right hand and the drone docked on the back, and the shape cut at 7%.
+
 ## After the machines (M5)
 
 All twenty card illustrations are regenerated in this style (owner decision, 2026-11-03): the six unit portraits rendered

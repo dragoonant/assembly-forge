@@ -48,7 +48,11 @@ export const WEIGHTS = Object.freeze({
   threat: 2.5,
   statusOnEnemy: 6,
   statusOnSelf: -6,
-  energy: 1.5
+  energy: 1.5,
+  /** An Upgrade held: permanent, so worth a little more than a turn's bonus. */
+  upgrade: 5,
+  /** A Remote Weapon System on the battlefield (its aura or strike is its value; losing it hands over its VP). */
+  remote: 6
 });
 
 /**
@@ -73,6 +77,7 @@ export function evaluate(state, side) {
     // more of its bounty is effectively already conceded.
     score -= sign * (1 - u.hp / u.maxHp) * u.vp * w.bountyAtRisk;
     score += sign * u.energy * w.energy;
+    score += sign * u.upgrades.length * w.upgrade;
     score += (mine ? w.statusOnSelf : -w.statusOnEnemy) * -u.statuses.length * (mine ? -1 : 1);
 
     score += sign * proximityBonus(state, u) * w.proximity;
@@ -94,6 +99,8 @@ export function evaluate(state, side) {
     if (o.controlledBy === side) score += worth;
     else if (o.controlledBy === foe) score -= worth;
   }
+
+  for (const r of State.deployedRemotes(state)) score += (r.side === side ? 1 : -1) * w.remote;
 
   for (let i = 0; i < state.garrisonOrder.length; i++) {
     const g = state.garrisons[state.garrisonOrder[i]];

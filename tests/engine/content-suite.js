@@ -115,7 +115,30 @@ T.suite('content text', function () {
       stripOnAttack: { k: 'stripOnAttack', n: 1 },
       critFrom: { k: 'critFrom', n: 7 },
       dashBonus: { k: 'dashBonus', n: 1 },
-      strengthVsStatus: { k: 'strengthVsStatus', n: 2 }
+      strengthVsStatus: { k: 'strengthVsStatus', n: 2 },
+      speed: { k: 'speed', n: 3 },
+      hover: { k: 'hover' },
+      rescue: { k: 'rescue' },
+      upgradeChoice: { k: 'upgradeChoice', n: 1 },
+      upgradeSpread: { k: 'upgradeSpread', n: 3, trait: 'task-force' },
+      transfer: { k: 'transfer' },
+      steal: { k: 'steal', energy: 1, upgrades: 1 },
+      destroyUpgrades: { k: 'destroyUpgrades', n: 'all' },
+      statusAll: { k: 'statusAll', s: 'disarm', range: 3 },
+      delayNearRemote: { k: 'delayNearRemote', n: 1 },
+      repositionSelf: { k: 'repositionSelf' },
+      damageBonus: { k: 'damageBonus', n: 2 },
+      nextAttackStrength: { k: 'nextAttackStrength', n: 4 },
+      remotesStrike: { k: 'remotesStrike', n: 1 },
+      repositionAllRemotes: { k: 'repositionAllRemotes' },
+      placeRemote: { k: 'placeRemote', remote: 'u10x' },
+      moveNow: { k: 'moveNow', n: 2 },
+      rescueMovedAdjacent: { k: 'rescueMovedAdjacent' },
+      damageMovedAdjacent: { k: 'damageMovedAdjacent', n: 1 },
+      draw: { k: 'draw', n: 1 },
+      noEnemyResponses: { k: 'noEnemyResponses' },
+      auraReduceDamage: { k: 'auraReduceDamage', n: 1 },
+      auraAccuracy: { k: 'auraAccuracy', n: 1 }
     };
     for (let i = 0; i < Effects.EFFECT_KINDS.length; i++) {
       const kind = Effects.EFFECT_KINDS[i];
@@ -215,7 +238,7 @@ T.suite('scenario layout', function () {
 
   T.test('every machine starts in Reserve and each side has one Base', function () {
     const ids = Object.keys(s.units);
-    T.eq(ids.length, 6);
+    T.eq(ids.length, 6, 'three a side');
     for (let i = 0; i < ids.length; i++) T.ok(s.units[ids[i]].inReserve, ids[i] + ' in Reserve');
     T.eq(State.basesOf(s, 0).length, 1);
     T.eq(State.basesOf(s, 1).length, 1);

@@ -60,7 +60,8 @@ export function stepOptions(state, p) {
     if (!cell) continue; // the board edge: not a collision, just nowhere to go
     const kind = state.rules.terrain[cell.terrain];
     const blocked = cell.elevation > State.elevationAt(state, t.hex) || kind.impassable ||
-      Boolean(State.unitAt(state, h)) || Boolean(State.garrisonAt(state, h)) || Boolean(State.baseAt(state, h));
+      Boolean(State.unitAt(state, h)) || Boolean(State.garrisonAt(state, h)) || Boolean(State.baseAt(state, h)) ||
+      Boolean(State.remoteAt(state, h));
     out.push({ to: { q: h.q, r: h.r }, collide: blocked });
   }
   out.sort(function (a, b) { return Hex.key(a.to) < Hex.key(b.to) ? -1 : 1; });
@@ -93,10 +94,13 @@ export function decide(state, action, combat) {
       const dmg = state.rules.movement.collisionDamage;
       const other = State.unitAt(state, action.to);
       const g = State.garrisonAt(state, action.to);
-      state.log.push({ t: 'collision', uid: t.uid, at: { q: action.to.q, r: action.to.r }, with: other ? other.uid : g ? g.gid : 'terrain', sound: 'hit', notice: true });
+      // a Remote Weapon System collides like a unit (rulebook 2026-10-30, "Collision Damage")
+      const rw = State.remoteAt(state, action.to);
+      state.log.push({ t: 'collision', uid: t.uid, at: { q: action.to.q, r: action.to.r }, with: other ? other.uid : g ? g.gid : rw ? rw.rid : 'terrain', sound: 'hit', notice: true });
       combat.dealDamage(state, { kind: 'unit', id: t.uid }, dmg, p.side, false);
       if (other) combat.dealDamage(state, { kind: 'unit', id: other.uid }, dmg, p.side, false);
       if (g) combat.dealDamage(state, { kind: 'garrison', id: g.gid }, dmg, p.side, false);
+      if (rw) combat.dealDamage(state, { kind: 'remote', id: rw.rid }, dmg, p.side, false);
       done = true;
     } else {
       t.hex = { q: action.to.q, r: action.to.r };

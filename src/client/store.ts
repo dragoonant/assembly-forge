@@ -3,6 +3,24 @@
 import { create } from 'zustand'
 import type { Action, Axial, GameState, LogEntry, Side } from './engine'
 import type { Beat } from './presentation/plan'
+import type { Difficulty } from './squads'
+
+const DIFFICULTY_KEY = 'assembly-forge.difficulty'
+function savedDifficulty(): Difficulty {
+  try {
+    const v = localStorage.getItem(DIFFICULTY_KEY)
+    return v === 'easy' || v === 'hard' || v === 'random' ? v : 'hard'
+  } catch {
+    return 'hard'
+  }
+}
+export function saveDifficulty(d: Difficulty): void {
+  try {
+    localStorage.setItem(DIFFICULTY_KEY, d)
+  } catch {
+    /* private mode: the choice lasts for this page only */
+  }
+}
 
 export type Screen = 'select' | 'brief' | 'play'
 export type Speed = 'normal' | 'fast' | 'instant'
@@ -17,8 +35,11 @@ export interface DiceView {
 
 export interface GameStore {
   screen: Screen
-  myTeam: string | null
-  foeTeam: string | null
+  /** The player's squad as it is being picked, and the CPU's once it has picked (null until then). */
+  mySquad: string[]
+  foeSquad: string[] | null
+  /** How the CPU picks its squad. */
+  difficulty: Difficulty
   /** The player's chosen Tactics deck; null means the suggested one. */
   myDeck: string[] | null
   game: GameState | null
@@ -60,8 +81,9 @@ export const HUMAN: Side = 0
 
 export const useGame = create<GameStore>(() => ({
   screen: 'select',
-  myTeam: null,
-  foeTeam: null,
+  mySquad: [],
+  foeSquad: null,
+  difficulty: savedDifficulty(),
   myDeck: null,
   game: null,
   armed: null,

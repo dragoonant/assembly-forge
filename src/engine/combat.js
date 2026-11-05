@@ -79,6 +79,10 @@ export function targetHex(state, ref) {
     const u = state.units[ref.id];
     return u && u.alive ? u.hex : null;
   }
+  if (ref.kind === 'remote') {
+    const r = state.remotes && state.remotes[ref.id];
+    return r && r.hex ? r.hex : null;
+  }
   const g = state.garrisons[ref.id];
   return g && g.alive ? g.hex : null;
 }
@@ -115,6 +119,13 @@ export function targetsFor(state, uid, w) {
     if (Hex.distance(u.hex, g.hex) > w.range) continue;
     if (!w.ignoreLos && !Los.hasLos(state, u.hex, g.hex, { side: u.side, targetUid: null })) continue;
     out.push({ kind: 'garrison', id: g.gid });
+  }
+
+  // Enemy Remote Weapon Systems can be attacked and destroyed (rulebook 2026-10-30, "Remote Weapon System").
+  for (const r of State.deployedRemotes(state, State.opponent(u.side))) {
+    if (Hex.distance(u.hex, r.hex) > w.range) continue;
+    if (!w.ignoreLos && !Los.hasLos(state, u.hex, r.hex, { side: u.side, targetUid: null })) continue;
+    out.push({ kind: 'remote', id: r.rid });
   }
 
   // An Engaged unit must target at least one of the enemies it is Engaged with (rulebook
@@ -170,6 +181,12 @@ export function accuracyShift(state, attacker, w, tHex, extra) {
   if (attacker.statuses.indexOf('blinded') !== -1) shift -= 1;
 
   shift += Effects.ongoingModifier(state, attacker, 'accuracy');
+
+  // an allied RWS with an accuracy aura: +n attacking an enemy adjacent to it
+  for (const r of State.deployedRemotes(state, attacker.side)) {
+    const n = State.remoteAura(r, 'auraAccuracy');
+    if (n && Hex.distance(r.hex, tHex) === 1) shift += n;
+  }
   if (state.activation && state.activation.uid === attacker.uid) {
     shift += state.activation.mods.accuracy;
   }
@@ -207,6 +224,19 @@ export function strengthOf(state, attacker, w, extra, targets) {
       n++;
     }
     s += n * w.strengthPerAlly.n;
+  }
+  // +n per Upgrade of a kind on the attacker
+  if (w.strengthPerUpgrade) s += State.upgradeCount(attacker, w.strengthPerUpgrade.kind) * w.strengthPerUpgrade.n;
+  // +n per allied RWS adjacent to the target (the first target, or any of several: the bonus is counted on the best)
+  if (w.strengthPerRemoteAdj && targets && targets.length) {
+    let best = 0;
+    for (const ref of targets) {
+      const h = targetHex(state, ref);
+      if (!h) continue;
+      const n = State.deployedRemotes(state, attacker.side).filter(function (r) { return Hex.distance(r.hex, h) === 1; }).length;
+      if (n > best) best = n;
+    }
+    s += best * w.strengthPerRemoteAdj;
   }
   // a bonus against targets carrying a status; with several targets it applies if any one qualifies
   const vsStatus = Effects.ongoingModifier(state, attacker, 'strengthVsStatus');
@@ -428,10 +458,20 @@ export function dealDamage(state, ref, hits, bySide, combat, opts) {
     // 2 VP for defeating an ENEMY Garrison (rulebook 2026-10-30, "Garrisons"): a side that destroys its own scores nothing
     const vp = bySide === g.side ? 0 : state.rules.scoring.garrisonDestroyVp;
     state.players[bySide].vp += vp;
+    if (vp) state.players[bySide].garrisonsDestroyed = (state.players[bySide].garrisonsDestroyed || 0) + 1;
     state.log.push({
       t: 'garrison_destroyed', gid: g.gid, by: bySide,
       vp: vp, sound: 'destroy', notice: true
     });
+    return { damage: hits, destroyed: true };
+  }
+
+  if (ref.kind === 'remote') {
+    const r = state.remotes && state.remotes[ref.id];
+    if (!r || !r.hex || hits <= 0) return { damage: 0, destroyed: false };
+    r.hp -= hits;
+    if (r.hp > 0) return { damage: hits, destroyed: false };
+    destroyRemote(state, r, true);
     return { damage: hits, destroyed: true };
   }
 
@@ -524,12 +564,33 @@ export function destroyUnit(state, u, bySide) {
     Timeline.remove(state.timeline, u.uid);
   }
 
+  // Its Remote Weapon Systems return to its supply (each RWS card says so).
+  for (const r of State.remotesOf(state, u.uid)) if (r.hex) destroyRemote(state, r, false);
+
   // A unit defeated during its own activation ends that activation at once.
   if (state.activation && state.activation.uid === u.uid) state.activation.defeated = true;
 
   state.log.push({
     t: 'destroyed', uid: u.uid, side: u.side, by: bySide, vp: u.vp, from: from,
     redeploys: redeploys, sound: 'destroy', notice: true
+  });
+}
+
+/**
+ * Take an RWS off the board and back to its owner's supply, repaired. Defeated in play, its VP go to the opposing
+ * player like a unit's; returned because its owner fell, nobody scores it.
+ * @param {Object} state
+ * @param {Object} r
+ * @param {boolean} defeated
+ */
+export function destroyRemote(state, r, defeated) {
+  const from = r.hex ? { q: r.hex.q, r: r.hex.r } : null;
+  r.hex = null;
+  r.hp = r.maxHp;
+  if (defeated) state.players[r.side === 0 ? 1 : 0].vp += r.vp;
+  state.log.push({
+    t: 'remote_destroyed', rid: r.rid, owner: r.owner, side: r.side, from: from, vp: defeated ? r.vp : 0,
+    returned: !defeated, sound: defeated ? 'destroy' : undefined, notice: true
   });
 }
 
@@ -564,8 +625,10 @@ export function refreshShield(state, uid) {
   if (u) u.shieldSpent = false;
 }
 
+Effects.bindCombat({ dealDamage: dealDamage });
+
 Attack.bindCombat({
   targetHex: targetHex, strengthOf: strengthOf, accuracyShift: accuracyShift, isHit: isHit, critFromFor: critFromFor,
   previewDamage: previewDamage, dealDamage: dealDamage, applyStatus: applyStatus, weapon: weapon,
-  targetsFor: targetsFor, reactMoves: reactMoves, destroyUnit: destroyUnit
+  targetsFor: targetsFor, reactMoves: reactMoves, destroyUnit: destroyUnit, weaponsOf: weaponsOf, destroyRemote: destroyRemote
 });

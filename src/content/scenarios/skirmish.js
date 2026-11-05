@@ -173,8 +173,9 @@ export const LAYOUT = Object.freeze({
 });
 
 /**
- * @param {Object} [opts] `{seed, rules, playerTeam, enemyTeam, decks}` — team ids from
- *        `src/content/teams.js`. The same id on both sides is a legal mirror. `decks` is an optional
+ * @param {Object} [opts] `{seed, rules, playerSquad, enemySquad, playerTeam, enemyTeam, decks}`. A squad is an array
+ *        of three unit ids from `Units.pool()`; an illegal one is ignored. Team ids from `src/content/teams.js` are the
+ *        older way to choose and are used only when no squad is given. The same squad on both sides is a legal mirror. `decks` is an optional
  *        `[cids | null, cids | null]`, the players' own choice of cards; a side without a legal choice gets the
  *        suggested deck.
  * @returns {Object} a spec for `State.createGame`
@@ -187,7 +188,10 @@ export function skirmish(opts) {
     hexes[Hex.key(axial(terrain[i][0]))] = terrain[i][1];
   }
 
+  // A squad given directly (any three units from the pool, a unit once unless Mass Produced) wins over a preset team.
   const squads = squadsFor(o.playerTeam, o.enemyTeam);
+  if (o.playerSquad && Units.isLegalSquad(o.playerSquad, SQUAD_SIZE)) squads[0] = o.playerSquad.slice();
+  if (o.enemySquad && Units.isLegalSquad(o.enemySquad, SQUAD_SIZE)) squads[1] = o.enemySquad.slice();
   // nine cards, plus three for each Phase beyond two (rulebook 2026-10-30, "Building a Deck")
   const phases = (o.rules && o.rules.match && o.rules.match.phasesPerGame) || 2;
   const size = 9 + 3 * Math.max(0, phases - 2);

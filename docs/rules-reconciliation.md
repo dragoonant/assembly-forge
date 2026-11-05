@@ -111,11 +111,67 @@ Judgement calls kept as they are: Push off the board edge just stops; area patte
 dealt none; when an Upgrade is destroyed it is the oldest; a card that captures "an Objective" near its target takes
 the first in board order; collision damage does not open the would-be-defeated window.
 
+## Added for the second wave (2026-11-05)
+
+Nine more machines (u07 to u15) and 27 more cards (t15 to t41) brought rules the first six never used. Each follows
+the rulebook (2026-10-30) where it speaks; the calls it leaves to us are listed below the table.
+
+| Rule | Where | Tests |
+| --- | --- | --- |
+| Remote Weapon Systems: board pieces with HP 1 and a VP value, owned by a unit, in its supply until deployed; deploy or reposition onto an empty hex within range (with Line of Sight); block nothing, cause no Engagement, contest nothing, but no move may end on one; attacked and destroyed like a unit (its VP to the opponent), back to the supply when destroyed or when its unit is defeated; collide when a unit is pushed into one | `state.remotes`; `State.remoteAt`, `isEmptyHex`; `combat.js` `destroyRemote`; `effects.js` `placeRemote` | wave-suite: remote weapon systems |
+| RWS auras: allies next to it take less damage from attacks; allies attacking an enemy next to it gain accuracy; a strike when it is placed | `attack.js` `auraReduction`; `combat.js` `accuracyShift`; `effects.js` `remotePlaced` | wave-suite |
+| Challenge: before the roll, a unit not under attack swaps with a defending ally within range and becomes the target | `attack.js` `challenge` | wave-suite: challenge |
+| Unit Response abilities in attack windows, with who must be attacking (`who`, `range`) and conditions on the attack (`attackWhen`); a window stays open after a response, so several can answer one trigger, each ability once | `attack.js` `windowOptions` | wave-suite |
+| Setting a die to a critical; rerolling misses (up to N, or all, with a draw when enough were rerolled); critical extra dice | `attack.js` `setCrit`, `rerollMisses` | wave-suite: changing the dice |
+| "This attack also targets each enemy adjacent to the target", alone or with an area | `actions.js` `withAdjacent` | wave-suite |
+| The T and flower area patterns | `units.js` `AREA_T`, `AREA_FLOWER` | wave-suite |
+| Upgrades: gain one of your choice; up to three units each gain a different one; redistribute between two allies; take Energy and an Upgrade; destroy all, or up to N chosen; Shields reactivate when they change hands | `effects.js` choices (`state.pending.kind === 'choose'`) | wave-suite: upgrades |
+| Critical effects after combat damage (a status, an Upgrade); damage per Upgrade held; damage to every enemy next to the unit's RWS | `attack.js` `crits`, `post_damage` | wave-suite |
+| Moving units up the Timeline (later), in Timeline order when several move at once | `effects.js` `delayToken`; `attack.js` `payTimeline` | wave-suite: timeline |
+| Drawing a card | `draw` effect | wave-suite |
+| Out-of-turn attacks: after an enemy ends its movement in range, at a stated Timeline cost; a surviving defender's counter-attack at its weapon's cost less one | `attack.js` `enemyMovedOptions`, `counterAttack`; `apply.js` `drainDeferred` | wave-suite: out-of-turn attacks |
+| Repeating an attack (a critical) | existing `crit.repeat` | mechanics-suite |
+| Damage reduction for a defender worth less VP; Hover while holding a Speed Upgrade or for one activation; damage to each enemy moved next to; rescue each Garrison moved next to; a Move taken at once with the rest of the card waiting on it; a reposition next to the unit's own RWS; a status on every enemy in range; +N damage on the activation's attacks; +N strength on the next attack; strength per Upgrade held and per allied RWS next to the target; +accuracy and strength while the unit has not moved; rescue an allied Garrison in range as a Command; enemies may not use Responses while a unit is attacking or attacked | `effects.js`, `attack.js`, `combat.js` | wave-suite |
+| Squads: any three units from the pool, a unit once unless Mass Produced | `units.js` `canAdd`, `isLegalSquad`; `skirmish.js` `playerSquad` | wave-suite: squads |
+
+Judgement calls where the rulebook is silent (ours, so they can be revisited):
+
+1. **"Moved adjacent to"** means next to any hex the unit entered during the move, not only where it stopped. "Each
+   enemy" includes enemy Garrisons and RWS; a Garrison falls to the 1 damage.
+2. **RWS strikes** (a strike when placed, "each RWS deals damage to an enemy next to it") hit enemy units only, and
+   "enemy" is the card player's enemy even for the opponent's RWS that a card repositions.
+3. **RWS are not Pushed or Pulled.** A unit pushed or pulled into one collides with it, which destroys it.
+4. **Challenge** swaps with a defending allied unit (not a Garrison or RWS), needs Line of Sight to it (a stated range),
+   and the swap does not trigger movement responses.
+5. **Rerolls** count a die as a miss only when it misses every target. "Any number of misses" rerolls them all (it can
+   only help); "up to 3" rerolls the three lowest. **Set a die to a critical** sets the lowest non-critical die to 10.
+6. **Shutting out Responses** covers Response cards and Response abilities, including "would be defeated" cards.
+7. **"After an enemy ends its movement"** fires after the enemy's own movement (Advance, Dash, Move, a reactive move, a
+   reposition), not after a Push or Pull we caused. The attack is made outside the shooter's activation and costs the
+   stated Timeline on its own token.
+8. **A counter-attack** may use any weapon that can reach the attacker; its cost is the weapon's less one, never below 0.
+9. **"After an allied unit is dealt damage"** answers damage dealt by an attack (the after-damage window) only.
+10. **A Command card with a before-the-roll clause** (+4 strength "this attack") gives +4 to the unit's next attack this
+    activation.
+11. **"Moves up the Timeline"** is later, as the defeat penalty uses the phrase.
+12. **"Hasn't moved this activation"** holds only during the unit's own activation.
+13. **A critical status "after combat damage"** lands on each target that was hit and survived, after the damage, so a
+    Fracture from it does not count against the same attack.
+14. **Extra targets** ("also targets each enemy adjacent") need no range or Line of Sight of their own. With an area, every
+    enemy next to any enemy in the area is added.
+15. **An empty hex** for an RWS excludes Objectives and map pickups (tokens) and impassable terrain.
+16. **An RWS destroyed in play** scores its VP for the opponent however it was destroyed; one returned because its unit
+    was defeated scores nothing.
+17. **Redistributing Upgrades** is a series of single moves, ending when the player stops (at most as many moves as the two
+    units hold Upgrades). "An Upgrade of your choice" is any of the four kinds, our Targeting core included.
+18. **A Response ability that costs Energy** always asks, whether or not its text says "may".
+19. **Tactics card costs.** None of the 27 new cards prints a Timeline cost (checked on the card images).
+
 ## Deferred until content needs them (PLAN.md D10)
 
-Carriers, remote weapon tokens, Reinforcements, carried Objectives, Challenge, Swap, Reposition,
-Setup abilities, the Primary keyword on Tactics cards, and Timeline cost reductions to 0 becoming
-additional actions.
+Carriers, Reinforcements, carried Objectives, Swap outside Challenge, Setup abilities, the Primary keyword on Tactics
+cards, and Timeline cost reductions to 0 becoming additional actions. Remote Weapon Systems, Challenge and Reposition
+arrived with the second wave (above).
 
 ## Balance after reconciliation
 

@@ -18,6 +18,19 @@ export interface Affordances {
 
 export const hexKey = (h: { q: number; r: number }): string => h.q + ',' + h.r
 
+/**
+ * The hex a targeted play (a Command, a Tactics card, a choice) lands on, so a tap there can take it: the hex it names,
+ * else its target machine's hex, else its Garrison's, else (a drone step) the drone's. Null when it has no place.
+ */
+export function actionHex(game: GameState, a: Action): { q: number; r: number } | null {
+  if (a.to) return a.to
+  if (a.targetUid) return game.units[a.targetUid]?.hex ?? null
+  if (a.gid) return game.garrisons[a.gid]?.hex ?? null
+  const remotes = (game as unknown as { remotes?: Record<string, { hex: { q: number; r: number } | null }> }).remotes
+  if (a.uid && remotes && remotes[a.uid]) return remotes[a.uid]!.hex
+  return null
+}
+
 const EMPTY: Affordances = { legal: [], moveTo: new Map(), deployTo: new Map(), shootAt: new Map(), targetable: new Set(), pushTo: new Map() }
 
 export function affordances(game: GameState | null, armed: string | null, active: boolean): Affordances {

@@ -161,9 +161,8 @@ export function legalActions(state) {
     if (a.timing !== 'command') continue;
     if (act.commandsUsed.indexOf(a.aid) !== -1) continue;
     if (!Effects.canUseCommand(state, u, a)) continue;
-    const targets = Effects.targetsFor(state, u, a);
-    for (let j = 0; j < targets.length; j++) {
-      out.push({ type: 'command', uid: u.uid, aid: a.aid, targetUid: targets[j] });
+    for (const opt of Effects.targetOptions(state, u, a)) {
+      out.push(Object.assign({ type: 'command', uid: u.uid, aid: a.aid }, opt));
     }
   }
 
@@ -175,7 +174,9 @@ export function legalActions(state) {
       const c = hand[i];
       // A card is an ability that lives in a hand, so it is gated the same way.
       if (!Effects.conditionHolds(state, u, c.when)) continue;
-      const targets = Effects.targetsFor(state, u, c);
+      // "your active <trait> unit": only a unit carrying the trait may play it
+      if (c.activeTrait && (u.traits || []).indexOf(c.activeTrait) === -1) continue;
+      const targets = c.timing === 'attack' ? [{}] : Effects.targetOptions(state, u, c);
       if (c.target && c.target !== 'self' && !targets.length) continue;
       if (c.timing === 'attack') {
         // An Attack card is an attack with its own weapon that takes the place of the Primary Attack.
@@ -188,8 +189,8 @@ export function legalActions(state) {
       }
       if (c.timing === 'response') continue;
       if (c.requires && c.requires.defId && c.requires.defId !== u.defId) continue;
-      for (let j = 0; j < targets.length; j++) {
-        out.push({ type: 'tactics', uid: u.uid, cid: c.cid, targetUid: targets[j] });
+      for (const opt of targets) {
+        out.push(Object.assign({ type: 'tactics', uid: u.uid, cid: c.cid }, opt));
       }
     }
   }
@@ -230,10 +231,33 @@ export function legalActions(state) {
 export function attackOptions(state, u, w) {
   if (w.area) {
     return Attack.areaOptions(state, u, w).map(function (o) {
-      return { area: o.dir, areaHexes: o.hexes, targets: o.targets, target: o.targets[0] };
+      const targets = w.alsoAdjacent ? withAdjacent(state, u.side, o.targets) : o.targets;
+      return { area: o.dir, areaHexes: o.hexes, targets: targets, target: targets[0] };
     });
   }
-  return Combat.targetsFor(state, u.uid, w).map(function (t) { return { target: t }; });
+  return Combat.targetsFor(state, u.uid, w).map(function (t) {
+    // "this attack also targets each enemy adjacent to the target"
+    return w.alsoAdjacent ? { target: t, targets: withAdjacent(state, u.side, [t]) } : { target: t };
+  });
+}
+
+/** The chosen targets plus every enemy adjacent to any of them (units, Garrisons and RWS), each once, chosen first. */
+export function withAdjacent(state, side, targets) {
+  const out = targets.slice();
+  const seen = {};
+  for (const r of out) seen[r.kind + ':' + r.id] = true;
+  for (const r of targets) {
+    const h = Combat.targetHex(state, r);
+    if (!h) continue;
+    for (const n of Hex.neighbours(h)) {
+      for (const ref of Attack.enemyRefsAt(state, side, n)) {
+        if (seen[ref.kind + ':' + ref.id]) continue;
+        seen[ref.kind + ':' + ref.id] = true;
+        out.push(ref);
+      }
+    }
+  }
+  return out;
 }
 
 /** The weapon an Attack card fires, with a weapon id derived from the card. */
@@ -430,7 +454,7 @@ export function movementOptions(state, uid, allowance, opts) {
     allowance -= rules.movement.engagementPenalty;
   }
   // Water and debris: a move started in them loses a hex. Hover ignores terrain penalties.
-  const hover = State.hasHover(u);
+  const hover = State.hasHover(u, state);
   const startKind = State.terrainAt(state, u.hex);
   if (!hover && startKind && startKind.startPenalty) allowance -= startKind.startPenalty;
 
@@ -531,7 +555,7 @@ export function canPassThrough(state, u, h, jumpFrom) {
   const kind = state.rules.terrain[cell.terrain];
   if (!kind) return false;
   // Impassable terrain may be crossed only with Hover, and never ended on (see canEndOn).
-  if (kind.impassable && !State.hasHover(u)) return false;
+  if (kind.impassable && !State.hasHover(u, state)) return false;
   // A jumping unit passes over enemies standing lower than the level it jumped from.
   const over = jumpFrom !== undefined && jumpFrom > cell.elevation;
 
@@ -571,6 +595,8 @@ export function canEndOn(state, u, h) {
   const g = State.garrisonAt(state, h);
   if (g && !state.rules.movement.endOnFriendly) return false;
   if (State.baseAt(state, h) && state.rules.movement.noEndOnBase) return false;
+  // no unit may end its movement in the same hex as a Remote Weapon System (rulebook 2026-10-30, "Remote Weapon System")
+  if (State.remoteAt(state, h)) return false;
   return true;
 }
 

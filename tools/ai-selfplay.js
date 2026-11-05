@@ -1,7 +1,10 @@
 /**
  * AI self-play harness.
  *
- *   node tools/ai-selfplay.js [games] [pairs=all] [weight=value ...]
+ *   node tools/ai-selfplay.js [games] [pairs=all | squads=random] [weight=value ...]
+ *
+ * `squads=random` gives each side a random legal squad from the whole pool (three units, a unit once unless it is
+ * Mass Produced), seeded per game, and reports wins by unit instead of by team.
  *
  * `pairs=all` cycles through every ordered pairing of the four preset teams, so
  * each team plays each other team from both seats equally often. That is what
@@ -23,6 +26,9 @@ import * as Apply from '../src/engine/apply.js';
 import * as State from '../src/engine/state.js';
 import { skirmish } from '../src/content/scenarios/skirmish.js';
 import { TEAM_ORDER } from '../src/content/teams.js';
+import * as Rng from '../src/engine/rng.js';
+import * as Squad from '../src/ai/squad.js';
+import * as Units from '../src/content/units.js';
 
 const games = Number(process.argv[2] || 40);
 
@@ -31,9 +37,11 @@ const games = Number(process.argv[2] || 40);
 // a change helped, so it has to be possible without editing the source.
 const overrides = {};
 let allPairs = false;
+let randomSquads = false;
 for (let i = 3; i < process.argv.length; i++) {
   const bits = String(process.argv[i]).split('=');
   if (bits[0] === 'pairs') { allPairs = bits[1] === 'all'; continue; }
+  if (bits[0] === 'squads') { randomSquads = bits[1] === 'random'; continue; }
   if (bits.length === 2) overrides[bits[0]] = Number(bits[1]);
 }
 const PAIRS = [];
@@ -52,23 +60,34 @@ const totals = {
   activations: 0, attacks: 0, kills: 0, rescues: 0,
   garrisonsDestroyed: 0, objectivesScored: 0, statuses: 0,
   energize: 0, dashes: 0, passes: 0, vp: [0, 0],
-  abilities: 0, tactics: 0, freeAttacks: 0,
+  abilities: 0, tactics: 0, freeAttacks: 0, remotes: 0, swaps: 0, rerolls: 0,
   phases: 0, crashes: 0
 };
 
 const failures = [];
+const byUnit = {};
+for (const d of Units.pool()) byUnit[d] = { games: 0, wins: 0 };
 
 for (let i = 0; i < games; i++) {
   const pair = allPairs ? PAIRS[i % PAIRS.length] : null;
-  const spec = skirmish(pair
-    ? { seed: 'selfplay-' + i, playerTeam: pair[0], enemyTeam: pair[1] }
-    : { seed: 'selfplay-' + i });
+  let squads = null;
+  if (randomSquads) {
+    const a = Squad.randomSquad(Units.pool(), Rng.seedFrom('squads-' + i));
+    const b = Squad.randomSquad(Units.pool(), a.rng);
+    squads = [a.squad, b.squad];
+  }
+  const spec = skirmish(squads
+    ? { seed: 'selfplay-' + i, playerSquad: squads[0], enemySquad: squads[1] }
+    : pair
+      ? { seed: 'selfplay-' + i, playerTeam: pair[0], enemyTeam: pair[1] }
+      : { seed: 'selfplay-' + i });
   let result;
   try {
     result = AI.playOut(State.createGame(spec));
   } catch (e) {
     totals.crashes++;
-    failures.push('seed selfplay-' + i + ': ' + e.message);
+    failures.push('seed selfplay-' + i + (squads ? ' ' + squads[0].join(',') + ' v ' + squads[1].join(',') : '') + ': ' + e.message +
+      (process.env.SELFPLAY_STACK ? '\n' + e.stack : ''));
     continue;
   }
 
@@ -79,6 +98,15 @@ for (let i = 0; i < games; i++) {
   totals.vp[0] += s.players[0].vp;
   totals.vp[1] += s.players[1].vp;
   if (s.winner === null) totals.draws++; else totals.wins[s.winner]++;
+  if (squads) {
+    for (let side = 0; side < 2; side++) {
+      for (const d of new Set(squads[side])) {
+        if (squads[1 - side].indexOf(d) !== -1) continue; // a unit on both sides tells us nothing
+        byUnit[d].games++;
+        if (s.winner === side) byUnit[d].wins++;
+      }
+    }
+  }
   if (pair && pair[0] !== pair[1]) {
     for (let side = 0; side < 2; side++) {
       byTeam[pair[side]].games++;
@@ -98,6 +126,9 @@ for (let i = 0; i < games; i++) {
     else if (e.t === 'ability') totals.abilities++;
     else if (e.t === 'tactics') totals.tactics++;
     else if (e.t === 'no_primary') totals.passes++;
+    else if (e.t === 'remote_deployed' || e.t === 'remote_repositioned') totals.remotes++;
+    else if (e.t === 'swap') totals.swaps++;
+    else if (e.t === 'reroll') totals.rerolls++;
   }
 }
 
@@ -123,6 +154,9 @@ process.stdout.write('  garrisons shot ' + per(totals.garrisonsDestroyed) + '\n'
 process.stdout.write('  objectives     ' + per(totals.objectivesScored) + '\n');
 process.stdout.write('  energize       ' + per(totals.energize) + '   <- should be near zero\n');
 process.stdout.write('  forced passes  ' + per(totals.passes) + '   <- should be zero\n');
+process.stdout.write('  remotes placed ' + per(totals.remotes) + '\n');
+process.stdout.write('  challenges     ' + per(totals.swaps) + '\n');
+process.stdout.write('  dice changed   ' + per(totals.rerolls) + '\n');
 
 if (allPairs) {
   process.stdout.write('wins by team (mixed pairings only):\n');
@@ -130,6 +164,15 @@ if (allPairs) {
     const t = byTeam[TEAM_ORDER[i]];
     process.stdout.write('  ' + TEAM_ORDER[i] + '  ' + t.wins + ' / ' + t.games +
       '  (' + Math.round(100 * t.wins / Math.max(1, t.games)) + '%)\n');
+  }
+}
+
+if (randomSquads) {
+  process.stdout.write('wins by unit (games where only one side fielded it):\n');
+  const rows = Object.keys(byUnit).map(function (d) { return [d, byUnit[d]]; })
+    .sort(function (a, b) { return b[1].wins / Math.max(1, b[1].games) - a[1].wins / Math.max(1, a[1].games); });
+  for (const [d, t] of rows) {
+    process.stdout.write('  ' + d + '  ' + t.wins + ' / ' + t.games + '  (' + Math.round(100 * t.wins / Math.max(1, t.games)) + '%)\n');
   }
 }
 

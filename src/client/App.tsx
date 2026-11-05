@@ -8,8 +8,9 @@ import { useEffect } from 'react'
 import { BoardCanvas } from './board/BoardCanvas'
 import { frameFor, hexToWorld, topOf } from './board/hexLayout'
 import { viewApi } from './board/viewApi'
-import { cellsOf, isTerminal, legalActions, teamOrder, type Action, type GameState } from './engine'
-import { deploy, maybeRunAI, take } from './game'
+import { aiChoose, cellsOf, isTerminal, legalActions, type Action, type GameState } from './engine'
+import { pool, squadSize } from './squads'
+import { deploy, maybeRunAI, setSquads, take } from './game'
 import { battleMusic, loadMuted, music } from './audio/sound'
 import { setSlowmo, skipBeat } from './presentation/director'
 import { Dice } from './hud/Dice'
@@ -25,6 +26,7 @@ declare global {
       screen: () => string
       legal: () => Action[]
       take: (a: Action) => void
+      aiChoose: () => Action | null
       over: () => boolean
       busy: () => boolean
       beat: () => string | null
@@ -37,6 +39,21 @@ declare global {
   }
 }
 
+/** The four preset squads the e2e suite and old links name. */
+const PRESETS: Record<string, string[]> = {
+  t_lance: ['u03', 'u02', 'u01'],
+  t_hammer: ['u05', 'u04', 'u01'],
+  t_anvil: ['u06', 'u01', 'u04'],
+  t_spear: ['u05', 'u03', 'u02'],
+}
+
+function squadParam(v: string | null): string[] | null {
+  if (!v) return null
+  if (PRESETS[v]) return PRESETS[v]!.slice()
+  const ids = v.split(',').filter((d) => pool().includes(d))
+  return ids.length === squadSize() ? ids : null
+}
+
 function readParams(): void {
   const p = new URLSearchParams(window.location.search)
   const ai = p.get('ai')
@@ -45,11 +62,11 @@ function readParams(): void {
   const speed = p.get('speed')
   if (speed === 'fast' || speed === 'instant') setStore({ speed: speed as Speed })
   if (p.has('slowmo')) setSlowmo(Number(p.get('slowmo')))
-  const team = p.get('team')
-  const foe = p.get('foe')
-  const order = teamOrder()
-  if (team && order.includes(team)) setStore({ myTeam: team, foeTeam: foe && order.includes(foe) ? foe : team })
-  if (p.get('auto') === '1' && getStore().myTeam) deploy(p.get('seed') ?? undefined)
+  // squads: `?squad=u01,u02,u03&foe=u04,u05,u06`, or the old preset names (`?team=t_lance&foe=t_hammer`)
+  const mine = squadParam(p.get('squad') ?? p.get('team'))
+  const foe = squadParam(p.get('foe')) ?? mine
+  if (mine && foe) setSquads(mine, foe)
+  if (p.get('auto') === '1' && getStore().mySquad.length) deploy(p.get('seed') ?? undefined)
 }
 
 function installHooks(): void {
@@ -62,6 +79,10 @@ function installHooks(): void {
       return g ? legalActions(g) : []
     },
     take: (a) => take(a),
+    aiChoose: () => {
+      const g = getStore().game
+      return g ? aiChoose(g) : null
+    },
     over: () => {
       const g = getStore().game
       return Boolean(g && isTerminal(g))

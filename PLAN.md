@@ -189,7 +189,10 @@ larger map.
 The slice implements every rule the six machines and the starter map use.
 Carriers, remote weapon tokens, Reinforcements, carried Objectives, Challenge,
 Swap, Reposition and Setup abilities wait until content needs them. They stay
-listed under "Rules to add" in §6 so nothing is lost.
+listed under "Rules to add" in §6 so nothing is lost. **2026-11-05:** the
+second wave of nine machines needed remote weapon tokens, Challenge and
+Reposition, so they are built (`docs/rules-reconciliation.md`, "Added for the
+second wave"); squads are now any three units from the pool of fifteen.
 
 ## 3. Layout
 
