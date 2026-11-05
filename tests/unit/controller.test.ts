@@ -1,12 +1,12 @@
-// The controller's attack path: a player's attack shows its dice first and only commits the new state when the panel is
-// dismissed, so the board and the damage change together. Runs the real engine through game.ts with no DOM.
+// The controller's attack path: a player's attack rolls its dice first, then plays the shot, and only commits the new
+// state when the shot lands, so the board and the damage change together. Runs the real engine through game.ts with no DOM.
 import { describe, expect, it, vi } from 'vitest'
 import { closeDice, deploy, take } from '../../src/client/game'
 import { legalActions } from '../../src/client/engine'
 import { getStore, setStore } from '../../src/client/store'
 
 describe('controller', () => {
-  it('plays the shot, holds the attack behind the dice panel, then commits it', async () => {
+  it('rolls the dice, then plays the shot, then commits the attack', async () => {
     setStore({ ai: [false, false], speed: 'normal', myTeam: 't_lance', foeTeam: 't_spear' })
     deploy('controller-attack')
     // hotseat: play both sides with a simple policy until an attack is legal
@@ -19,11 +19,16 @@ describe('controller', () => {
         const before = g
         take(attack)
         expect(getStore().busy).toBe(true)
-        expect(getStore().beat?.kind).toBe('shot') // the shot plays first
-        await vi.waitFor(() => expect(getStore().dice).not.toBeNull(), { timeout: 3000 })
-        expect(getStore().game).toBe(before) // not committed yet
+        // the dice come first, before any animation, and nothing is committed yet
+        expect(getStore().dice).not.toBeNull()
+        expect(getStore().beat).toBeNull()
+        expect(getStore().game).toBe(before)
         closeDice()
-        await vi.waitFor(() => expect(getStore().game).not.toBe(before))
+        // then the shot plays, still before the commit
+        await vi.waitFor(() => expect(getStore().beat?.kind).toBe('shot'))
+        expect(getStore().dice).toBeNull()
+        expect(getStore().game).toBe(before)
+        await vi.waitFor(() => expect(getStore().game).not.toBe(before), { timeout: 3000 })
         await vi.waitFor(() => expect(getStore().busy).toBe(false))
         expect(getStore().dice).toBeNull()
         return

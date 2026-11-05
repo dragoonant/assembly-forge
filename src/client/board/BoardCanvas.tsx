@@ -14,7 +14,8 @@ import { Prop } from './Prop'
 import { isTap } from './gesture'
 import { HEX_SIZE, frameFor, hexToWorld, topOf, worldToHex, type Cell, type Frame } from './hexLayout'
 import { Machine, SIDE_COLOUR } from './Machine'
-import { DeployGhost, Effects, Tracer, UnitMover, type WorldOf } from './Motion'
+import { AttackFxLayer } from './AttackFx'
+import { DeployGhost, Effects, UnitMover, type WorldOf } from './Motion'
 
 /**
  * The battlefield (PLAN.md D5, revised 2026-11-04): an open landscape with a hex grid painted on it, not a floor of tiles.
@@ -524,7 +525,6 @@ function Scene() {
     const h = p.targetUid ? game.units[p.targetUid]?.hex : null
     if (h) pickAt.set(hexKey(h), p)
   }
-  const shooter = beat && beat.kind === 'shot' ? game.units[beat.uid] : null
   const deploying = beat && beat.kind === 'deploy' ? game.units[beat.uid] : null
 
   // Every tap lands on a hex, never on a figure (figures carry no pointer handlers, so a tall model cannot hide the hex
@@ -615,7 +615,7 @@ function Scene() {
           worldOf={worldOf}
         />
       )}
-      {shooter?.hex && beat && beat.kind === 'shot' && !beat.melee && <Tracer from={worldOf(shooter.hex)} to={worldOf(beat.to)} />}
+      <AttackFxLayer worldOf={worldOf} />
       <Effects worldOf={worldOf} phase={game.phase} round={game.round} />
       <LosLine game={game} frame={frame} armed={armed} hover={hoverHex} />
       <CameraRig frame={frame} surface={surface} />

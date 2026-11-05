@@ -33,9 +33,35 @@ pushed). The owner reviews the set next.**
   clear of the iPad and iPhone home bar. The bar folds to one line too. The dice panel and
   the game-over panel are unchanged.
 - The presentation director (`src/client/presentation/`): every action's new log entries become blocking beats (a walk
-  along the engine's path with a hop on level changes, a drop onto the Base on deploy, a turn and a tracer or a lunge for a
-  shot) and effects (hit bursts, a wreck that topples and sinks and leaves a scorch for the round, floating damage, VP, TL
-  and status labels, Phase banners, an orbit at game over). Speeds follow the opponent-speed setting; any click skips.
+  along the engine's path with a hop on level changes, a drop onto the Base on deploy, and for an attack the dice first,
+  then the shot) and effects (hit bursts, a wreck flying off that leaves a scorch for the round, floating damage, VP, TL
+  and status labels, Phase banners, an orbit at game over). An attack (owner, 2026-11-04) rolls its dice panel first, then
+  plays its attack animation, and the hit bursts and damage numbers land as the shot does; response windows and card
+  pauses happen before the attack finishes, so they come before the dice. Speeds follow the opponent-speed setting
+  (instant shows no dice and no animation); any click skips.
+- Attack effects (`src/client/board/AttackFx.tsx`), one kind per weapon from `src/client/presentation/weaponFx.ts`
+  (`WEAPON_FX`, a `Record<wid, FxKind>`, with a fallback from the stats: range 1 melee, ignoring line of sight mortar, an
+  area pattern blast, otherwise beam from range 4 and ballistic below). Timings live in `presentation/fxTiming.ts`, and the
+  attacker's shoot or melee clip is driven by the beat, so the aim holds while it fires and each round kicks the arm.
+  - Beam: motes drawn into a growing glow at the muzzle, then a flickering beam (white core, blue shell, wide halo, glows
+    along its length for bloom), a big flash and a fountain of sparks at the target, smoke as it shuts off.
+  - Ballistic: five rounds, each with a muzzle flash, a hot tracer streak, and a flash, sparks and dust where it lands.
+  - Missile: four missiles from pods on the back and shoulders, alternating sides, arcing up and in on smoke trails, each
+    exploding on the target.
+  - Melee: thrusters and a dash in to just short of the target, a blade arc swept from the weapon side, a white flash,
+    sparks, a shock ring and dust at the impact, and back.
+  - Blast (area): a charge and discharge, a wave racing out, then every hex in the pattern lit and exploding in turn by
+    distance. An area attack of another kind also lights its hexes when it lands.
+  - Mortar: a heavy launch from the shoulder tube, the shell lobbed high on a thin smoke trail, a big explosion, a shock
+    ring and debris.
+  - On a miss the rounds go wide into the ground beside the target; a struck machine rocks back as the hit lands.
+  Muzzles come from the rigged bones (the aiming hand per `tools/rig/rigs.json`, the forearm-to-hand line for the
+  barrel), shoulder mounts and pods from the head bone with offsets, and stand-ins from fixed offsets. Everything is drawn
+  by one layer into two instanced billboard fields (additive glow, smoke) and a few pooled meshes, built once; there is
+  no post-processing.
+- Destroyed machines fly off: a flash, a shower of sparks and smoke off the hex, a shudder up, then the machine boosts up
+  and out of view behind its own side (the same cone a deploying machine flies in from), tumbling, thrusters lit, a fire
+  in its chest and a smoke trail behind it. The scorch mark stays for the round.
 - Sound: cues synthesized in the browser, the MegaMechaTactics music bed on the setup screens, and in battle three
   original 90-second battle themes made locally with MusicGen (`tools/make-music-local.py`, the AudioStudio audiocraft
   venv): a rock-and-brass theme, a darker metal-and-orchestra theme and a synth space-war theme, played in turn and round
@@ -57,13 +83,15 @@ pushed). The owner reviews the set next.**
 - Models are preloaded at startup and never drawn as stand-ins while loading; Deploy waits for them (rule 26).
 - Mouse: wheel zooms, right drag rotates, middle drag pans, left picks; the left drag also pans until a middle press shows a
   three-button mouse (rule 27). The battle themes crossfade into each other.
-- URL switches: `?slowmo=N` stretches every animation N times for review; `?ai=both` to spectate, `?ai=none` for hotseat, `?speed=fast|instant`, and `?team=..&foe=..&seed=..&auto=1`.
+- URL switches: `?slowmo=N` stretches every animation (and the wreck's flight) N times for review; `?ai=both` to spectate, `?ai=none` for hotseat, `?speed=fast|instant`, and `?team=..&foe=..&seed=..&auto=1`.
 
 ## Verified (2026-11-04)
 - `npm run typecheck`: clean.
-- `npm test`: 249 engine tests and 22 unit tests pass (the controller's shot-then-dice-then-commit path, the planner).
+- `npm test`: 249 engine tests and 30 unit tests pass (the controller's dice-then-shot-then-commit path, the planner's
+  dice beat before each shot, the weapon-to-effect map and its fallback, the shot timings).
 - `npm run build`: clean.
-- `npm run e2e` (14 tests, including the mouse map, including the HUD on a phone in landscape with every panel folded and no text selection, a tap
+- `npm run e2e` (17 tests, including every attack effect kind and a wreck flying off, frozen mid-flight and looked at
+  (`e2e-out/fx-*.png`), including the mouse map, including the HUD on a phone in landscape with every panel folded and no text selection, a tap
   on the hex behind a machine, and the deploy flight in slow motion): squad select to deploy to a move with real clicks on the 3D board; a whole AI-vs-AI game
   through the client; beats and effects playing at normal and fast speed; and every clip of all six machines in the figure
   viewer (screenshots looked at). All with zero console errors. Screenshots of deploy,
@@ -73,6 +101,12 @@ pushed). The owner reviews the set next.**
 - Mirror matches: 23 to 25 over 48 games, so no seat advantage.
 
 ## Not verified / known gaps
+- The attack effects and the fly-off were checked as frozen frames in headless software GL, not watched at speed, and
+  not on a phone or iPad GPU. Glow is additive billboards, not real bloom, so it reads softer than a post-processed glow.
+- No current weapon has an area pattern, so the blast was only seen through the review hook, over a target and its
+  neighbours.
+- The melee slash is drawn over the machines (no depth test) so it is never hidden; the muzzles of shoulder mounts and
+  pods are offsets from the head bone, not bones of their own.
 - No person has played a full game yet; the e2e suite and AI games are the evidence so far.
 - Sound has not been heard by anyone: the cues are synthesized and only checked to run without errors, and the battle
   themes were chosen by score, not by ear. MusicGen's weights are under a non-commercial licence.

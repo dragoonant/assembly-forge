@@ -2,6 +2,8 @@
 import { describe, expect, it } from 'vitest'
 import { apply, legalActions, newSkirmish, type Action } from '../../src/client/engine'
 import { newEntries, plan, WALK_S_PER_HEX } from '../../src/client/presentation/plan'
+import { FX_DUR } from '../../src/client/presentation/fxTiming'
+import { fxKindFor } from '../../src/client/presentation/weaponFx'
 
 function firstDeploy() {
   const g = newSkirmish('plan-test', 't_lance', 't_anvil')
@@ -36,5 +38,45 @@ describe('presentation plan', () => {
     const p = plan(g, g, g.log)
     expect(p.beats).toHaveLength(0)
     expect(p.effects.some((e) => e.kind === 'banner' && e.text === 'Phase 1')).toBe(true)
+  })
+
+  it('an attack rolls its dice first, then plays the shot, and its damage lands after', () => {
+    // hotseat with a simple policy until an attack is legal
+    let g = newSkirmish('plan-attack', 't_lance', 't_spear')
+    let attack: Action | undefined
+    for (let guard = 0; guard < 400 && !attack; guard++) {
+      const legal = legalActions(g)
+      attack = legal.find((a) => a.type === 'attack')
+      if (attack) break
+      const pick =
+        legal.find((a) => a.type === 'deploy') ??
+        legal
+          .filter((a) => a.type === 'advance' || a.type === 'dash')
+          .sort((a, b) => Math.abs(a.to!.q + a.to!.r / 2) - Math.abs(b.to!.q + b.to!.r / 2))[0] ??
+        legal.find((a) => a.type === 'end_activation')!
+      g = apply(g, pick)
+    }
+    expect(attack).toBeDefined()
+    const next = apply(g, attack!)
+    const entries = newEntries(g, next)
+    const p = plan(g, next, entries)
+    const kinds = p.beats.map((b) => b.kind)
+    const dice = kinds.indexOf('dice')
+    const shot = kinds.indexOf('shot')
+    expect(dice).toBeGreaterThanOrEqual(0)
+    expect(shot).toBe(dice + 1)
+    const b = p.beats[shot]!
+    if (b.kind === 'shot') {
+      const w = g.units[attack!.uid]!.weapons.find((x) => x.wid === attack!.wid)!
+      expect(b.fx).toBe(fxKindFor(w))
+      expect(b.dur).toBe(FX_DUR[b.fx])
+      expect(b.hits.length).toBeGreaterThan(0)
+      const outcome = entries.find((e) => e.t === 'attack')!
+      expect(b.miss).toBe(outcome.damage === 0)
+    }
+    const d = p.beats[dice]!
+    if (d.kind === 'dice') expect(d.outcome.t).toBe('attack')
+    // the damage number is an effect, so it shows after the beats, as the shot lands
+    expect(p.effects.some((e) => e.kind === 'float')).toBe(true)
   })
 })

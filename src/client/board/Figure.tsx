@@ -69,10 +69,13 @@ function RiggedModel({ scene, clips, pose, frozenAt }: { scene: Object3D; clips:
   const playing = useRef<{ name: string; action: AnimationAction } | null>(null)
   useEffect(() => {
     ;(window as unknown as { __figureReady?: boolean }).__figureReady = true
+    // let the attack effects find this model's bones (only a figure under a unit mover has a cue to write to)
+    if (cue && !pose) cue.model = root
     return () => {
       mixer.stopAllAction()
+      if (cue && cue.model === root) cue.model = null
     }
-  }, [mixer])
+  }, [mixer, cue, root, pose])
 
   useFrame((_, dt) => {
     const want = pose ?? cue?.current.clip ?? 'idle'
@@ -87,6 +90,14 @@ function RiggedModel({ scene, clips, pose, frozenAt }: { scene: Object3D; clips:
       if (prev && frozenAt == null) prev.crossFadeTo(next, FADE_S, false)
       else if (prev) prev.stop()
       playing.current = { name: want, action: next }
+    }
+    const at = pose ? undefined : cue?.current.at
+    if (at !== undefined && next) {
+      // driven by the beat: hold the clip where the beat says, still cross-fading in from the last one
+      next.timeScale = 0
+      next.time = Math.min(at, next.getClip().duration)
+      mixer.update(Math.min(dt, 0.1))
+      return
     }
     if (frozenAt != null && next) {
       // hold one moment of the clip, for screenshots

@@ -36,6 +36,8 @@ export interface Weapon {
   strength: number
   ignoreLos: boolean
   crit: Record<string, unknown> | null
+  /** An area weapon's pattern (hex offsets), or null. */
+  area?: unknown[] | null
 }
 
 export interface Ability {

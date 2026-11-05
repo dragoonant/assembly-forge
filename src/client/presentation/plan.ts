@@ -1,9 +1,12 @@
 // The presentation plan: which engine log entries become which animations. Pure, so it is unit-tested; the runtime that
 // plays a plan is director.ts. Two kinds of beat:
-//   - blocking beats play BEFORE the new state is shown (a walk along the path, a deploy, a shot), because the board
-//     must not jump to the result before the motion that caused it;
-//   - effects play AFTER it is shown and do not block input (a hit burst, a wreck sinking, a floating label, a banner).
+//   - blocking beats play BEFORE the new state is shown (a walk along the path, a deploy, the dice, a shot), because the
+//     board must not jump to the result before the motion that caused it;
+//   - effects play AFTER it is shown and do not block input (a hit burst, a wreck flying off, a floating label, a banner).
+// An attack is two beats: the dice roll first, then the shot plays (its kind from weaponFx.ts) and lands with the damage.
 import { Names, type Axial, type GameState, type LogEntry, type Side } from '../engine'
+import { FX_DUR } from './fxTiming'
+import { fxKindFor, type FxKind } from './weaponFx'
 
 /** Seconds per hex of walking: about 1.5 hexes a second (PLAN.md M3). */
 export const WALK_S_PER_HEX = 0.66
@@ -11,7 +14,13 @@ export const WALK_S_PER_HEX = 0.66
 export type Beat =
   | { kind: 'move'; uid: string; path: Axial[]; dur: number; dash?: boolean }
   | { kind: 'deploy'; uid: string; at: Axial; dur: number }
-  | { kind: 'shot'; uid: string; to: Axial; melee: boolean; dur: number }
+  /** The dice panel for an attack: the controller shows it and waits for it to close. Takes no time of its own. */
+  | { kind: 'dice'; outcome: LogEntry; dur: 0 }
+  /**
+   * The attack animation. `to` is the aimed hex (the first target), `hits` every target's hex, `area` the hexes an area
+   * weapon covers, `struck` the units that took damage (they jolt when the hit lands), and `miss` true when nothing did.
+   */
+  | { kind: 'shot'; uid: string; to: Axial; fx: FxKind; hits: Axial[]; area: Axial[] | null; struck: string[]; miss: boolean; dur: number }
 
 export type Effect =
   | { kind: 'burst'; at: Axial; colour: string }
@@ -60,16 +69,31 @@ export function plan(prev: GameState, next: GameState, entries: LogEntry[]): Pla
         effects.push({ kind: 'cue', cue: 'deploy' })
         break
       case 'attack': {
+        beats.push({ kind: 'dice', outcome: e, dur: 0 })
         const attacker = prev.units[e.uid]
-        const to: Axial | null = e.target.kind === 'unit' ? prev.units[e.target.id]?.hex ?? null : prev.garrisons[e.target.id]?.hex ?? null
+        const hexOf = (r: { kind: string; id: string }): Axial | null =>
+          r.kind === 'unit' ? prev.units[r.id]?.hex ?? null : prev.garrisons[r.id]?.hex ?? null
+        const results: { ref: { kind: string; id: string }; damage: number; destroyed: boolean; status: string | null }[] =
+          e.results && e.results.length ? e.results : [{ ref: e.target, damage: e.damage, destroyed: e.destroyed, status: e.status ?? null }]
+        const to = hexOf(e.target)
         if (attacker?.hex && to) {
           const w = attacker.weapons.find((x) => x.wid === e.wid)
-          beats.push({ kind: 'shot', uid: e.uid, to, melee: Boolean(w && w.range <= 1), dur: 0.45 })
+          const fx = fxKindFor(w ?? { wid: e.wid, range: 1 })
+          const hits = results.map((r) => hexOf(r.ref)).filter((h): h is Axial => h !== null)
+          const struck = results.filter((r) => r.ref.kind === 'unit' && r.damage > 0).map((r) => r.ref.id)
+          beats.push({
+            kind: 'shot', uid: e.uid, to, fx, hits: hits.length ? hits : [to], area: e.area && e.area.length ? e.area : null,
+            struck, miss: !results.some((r) => r.damage > 0), dur: FX_DUR[fx],
+          })
           effects.push({ kind: 'cue', cue: e.destroyed ? 'destroy' : e.damage > 0 ? 'hit' : 'miss' })
-          effects.push({ kind: 'burst', at: to, colour: e.damage > 0 ? COLOUR.hit : COLOUR.miss })
-          if (e.target.kind === 'unit' && e.damage > 0 && !e.destroyed) effects.push({ kind: 'hurt', uid: e.target.id })
-          effects.push({ kind: 'float', at: to, text: e.damage > 0 ? '-' + e.damage : 'miss', colour: e.damage > 0 ? COLOUR.hit : COLOUR.miss })
-          if (e.status) effects.push({ kind: 'float', at: to, text: Names.STATUSES[e.status] ?? String(e.status), colour: COLOUR.status })
+          for (const r of results) {
+            const at = hexOf(r.ref)
+            if (!at) continue
+            effects.push({ kind: 'burst', at, colour: r.damage > 0 ? COLOUR.hit : COLOUR.miss })
+            if (r.ref.kind === 'unit' && r.damage > 0 && !r.destroyed) effects.push({ kind: 'hurt', uid: r.ref.id })
+            effects.push({ kind: 'float', at, text: r.damage > 0 ? '-' + r.damage : 'miss', colour: r.damage > 0 ? COLOUR.hit : COLOUR.miss })
+            if (r.status) effects.push({ kind: 'float', at, text: Names.STATUSES[r.status] ?? String(r.status), colour: COLOUR.status })
+          }
           settle = Math.max(settle, 0.5)
         }
         break
@@ -79,7 +103,7 @@ export function plan(prev: GameState, next: GameState, entries: LogEntry[]): Pla
           const u = prev.units[e.uid] ?? next.units[e.uid]
           if (u) effects.push({ kind: 'wreck', uid: e.uid, defId: u.defId, side: u.side, at: e.from })
           effects.push({ kind: 'float', at: e.from, text: '+' + e.vp + ' VP', colour: COLOUR.vp })
-          settle = Math.max(settle, 0.9)
+          settle = Math.max(settle, 1.1)
         }
         break
       case 'garrison_destroyed':

@@ -9,9 +9,11 @@ import { BoardCanvas } from './board/BoardCanvas'
 import { frameFor, hexToWorld, topOf } from './board/hexLayout'
 import { viewApi } from './board/viewApi'
 import { cellsOf, isTerminal, legalActions, teamOrder, type Action, type GameState } from './engine'
-import { deploy, maybeRunAI, take } from './game'
+import { deploy, maybeRunAI, setSpeed, take } from './game'
 import { battleMusic, loadMuted, music } from './audio/sound'
 import { setSlowmo, skipBeat } from './presentation/director'
+import { closestPair, demoShot, demoWreck, focus, seekBeat, seekWreck } from './presentation/review'
+import type { FxKind } from './presentation/weaponFx'
 import { Dice } from './hud/Dice'
 import { Hud } from './hud/Hud'
 import { Setup } from './hud/Setup'
@@ -33,6 +35,17 @@ declare global {
       setView: typeof viewApi.setView
       resetView: () => void
       hexToScreen: (q: number, r: number) => { x: number; y: number } | null
+      setSpeed: (s: Speed) => void
+      /** Review hooks for the attack effects (presentation/review.ts); they never touch the engine state. */
+      fx: {
+        pair: typeof closestPair
+        shot: (kind: FxKind, opts?: { area?: boolean; miss?: boolean }) => Promise<void>
+        wreck: () => void
+        seek: (t: number) => void
+        seekWreck: (k: number) => void
+        skip: () => void
+        focus: typeof focus
+      }
     }
   }
 }
@@ -75,6 +88,8 @@ function installHooks(): void {
     camera: () => viewApi.camera(),
     setView: (v) => viewApi.setView(v),
     resetView: () => viewApi.reset(),
+    setSpeed: (sp) => setSpeed(sp),
+    fx: { pair: closestPair, shot: demoShot, wreck: demoWreck, seek: seekBeat, seekWreck, skip: skipBeat, focus },
     hexToScreen: (q, r) => {
       const g = getStore().game
       if (!g) return null
