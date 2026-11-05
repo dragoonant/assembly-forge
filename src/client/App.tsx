@@ -10,7 +10,7 @@ import { frameFor, hexToWorld, topOf } from './board/hexLayout'
 import { viewApi } from './board/viewApi'
 import { cellsOf, isTerminal, legalActions, teamOrder, type Action, type GameState } from './engine'
 import { deploy, maybeRunAI, take } from './game'
-import { loadMuted, music } from './audio/sound'
+import { battleMusic, loadMuted, music } from './audio/sound'
 import { skipBeat } from './presentation/director'
 import { Dice } from './hud/Dice'
 import { Hud } from './hud/Hud'
@@ -98,6 +98,7 @@ export function App() {
     // browsers only allow audio after a gesture: start the setup music on the first one
     const onFirst = (): void => {
       if (getStore().screen !== 'play') music(true)
+      else battleMusic(true)
       window.removeEventListener('pointerdown', onFirst)
     }
     window.addEventListener('pointerdown', onDown)

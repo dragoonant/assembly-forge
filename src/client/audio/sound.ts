@@ -1,15 +1,23 @@
 // Sound. The cues are synthesized in the browser with the Web Audio API, so nothing is fetched and no paid generation
 // was spent on them; recorded cues can replace these later under the same names (MegaMechaTactics' SFX_PROMPTS keys).
-// The one music bed (generated for MegaMechaTactics) loops quietly on the setup screens. Mix levels follow the 2D game:
-// cues about 0.55, the bed about 0.28. Audio starts only after the first user gesture, as browsers require.
+// The one music bed (generated for MegaMechaTactics) loops quietly on the setup screens; in a battle three generated
+// battle themes (made locally with MusicGen, tools/make-music-local.py) play in turn, each to its end, then the next. Mix levels follow the 2D game:
+// cues about 0.55, the bed about 0.28, battle music a touch louder. Audio starts only after the first user gesture, as browsers require.
 import { getStore, setStore } from '../store'
 
 const CUE_GAIN = 0.55
 const BED_GAIN = 0.28
+const BATTLE_GAIN = 0.32
+/** The battle themes, played in this order and round again. A missing file is skipped. */
+const BATTLE_TRACKS = ['battle_1', 'battle_2', 'battle_3']
 const MUTE_KEY = 'assembly-forge.muted'
 
 let ctx: AudioContext | null = null
 let bed: HTMLAudioElement | null = null
+let battle: HTMLAudioElement | null = null
+let battleIdx = 0
+let battleOn = false
+let battleFails = 0
 
 function audio(): AudioContext | null {
   if (getStore().muted) return null
@@ -117,6 +125,45 @@ export function music(on: boolean): void {
   }
 }
 
+function playBattleTrack(): void {
+  if (!battleOn || getStore().muted || typeof Audio === 'undefined') return
+  const name = BATTLE_TRACKS[battleIdx % BATTLE_TRACKS.length]!
+  const el = new Audio(import.meta.env.BASE_URL + 'audio/music/' + name + '.mp3')
+  el.volume = BATTLE_GAIN
+  el.addEventListener('ended', () => {
+    battleIdx++
+    playBattleTrack()
+  })
+  el.addEventListener('error', () => {
+    // a missing or broken track is skipped; after a full round of failures the battle stays quiet
+    battleFails++
+    battleIdx++
+    if (battleFails < BATTLE_TRACKS.length) playBattleTrack()
+  })
+  el.addEventListener('playing', () => {
+    battleFails = 0
+  })
+  battle = el
+  void el.play().catch(() => undefined)
+}
+
+/** The battle themes, in turn; false stops them (and the next battle starts with the following track). */
+export function battleMusic(on: boolean): void {
+  if (on) {
+    if (battleOn && battle && !battle.paused) return
+    battleOn = true
+    if (battle && battle.paused && battle.currentTime > 0 && !battle.ended) void battle.play().catch(() => undefined)
+    else playBattleTrack()
+  } else {
+    battleOn = false
+    if (battle) {
+      battle.pause()
+      if (battle.currentTime > 0) battleIdx++
+      battle = null
+    }
+  }
+}
+
 export function setMuted(muted: boolean): void {
   setStore({ muted })
   try {
@@ -124,7 +171,15 @@ export function setMuted(muted: boolean): void {
   } catch {
     // storage can be unavailable; the setting then lasts for this visit only
   }
-  if (muted) music(false)
+  if (muted) {
+    music(false)
+    if (battle) battle.pause()
+  } else if (getStore().screen === 'play') {
+    battleOn = false
+    battleMusic(true)
+  } else {
+    music(true)
+  }
 }
 
 export function loadMuted(): void {

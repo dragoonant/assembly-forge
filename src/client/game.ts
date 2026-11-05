@@ -3,7 +3,7 @@
 // attack, then commit the new state and start the effects (bursts, wrecks, labels, banners). The board therefore never
 // jumps to a result before the motion that caused it, and damage lands with the dice (the 2D game's rule, kept).
 import { apply, deciderSide, displayName, isTerminal, newSkirmish, teamOrder, aiChoose, type Action, type GameState } from './engine'
-import { music } from './audio/sound'
+import { battleMusic, music } from './audio/sound'
 import { clearEffects, runBeats, runEffects, SPEED_FACTOR } from './presentation/director'
 import { newEntries, plan } from './presentation/plan'
 import { getStore, setStore, type Speed } from './store'
@@ -32,6 +32,7 @@ export function newGame(): void {
   diceDone = null
   clearEffects()
   setStore({ screen: 'select', myTeam: null, foeTeam: null, myDeck: null, game: null, armed: null, selected: null, busy: false, dice: null })
+  battleMusic(false)
   music(true)
 }
 
@@ -69,6 +70,7 @@ export function deploy(seed?: string): void {
   epoch++
   clearEffects()
   music(false)
+  battleMusic(true)
   const game = newSkirmish(seed ?? 'game-' + Date.now(), myTeam ?? undefined, foeTeam ?? undefined, [myDeck, null])
   setStore((s) => ({ screen: 'play', game, rev: s.rev + 1, armed: null, selected: null, busy: false, dice: null }))
   // the opening banner and anything else the setup logged

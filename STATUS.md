@@ -33,8 +33,10 @@ pushed). The owner reviews the set next.**
   along the engine's path with a hop on level changes, a drop onto the Base on deploy, a turn and a tracer or a lunge for a
   shot) and effects (hit bursts, a wreck that topples and sinks and leaves a scorch for the round, floating damage, VP, TL
   and status labels, Phase banners, an orbit at game over). Speeds follow the opponent-speed setting; any click skips.
-- Sound: cues synthesized in the browser (no paid generation), the MegaMechaTactics music bed on the setup screens, and a
-  mute toggle that is remembered.
+- Sound: cues synthesized in the browser, the MegaMechaTactics music bed on the setup screens, and in battle three
+  original 90-second battle themes made locally with MusicGen (`tools/make-music-local.py`, the AudioStudio audiocraft
+  venv): a rock-and-brass theme, a darker metal-and-orchestra theme and a synth space-war theme, played in turn and round
+  again. The take of each was picked by CLAP match to its prompt. A mute toggle that is remembered.
 - The six machines as generated, rigged models (`public/assets/models/u01.glb` to `u06.glb`, about 1.7 MB each): model-kit
   proportions, a 17-bone skeleton with stiff armour weighting, and eight clips (idle, walk, jump, fly, melee, shoot, hit,
   destroyed) that the board picks from the current beat. Stand-ins remain as the fallback.
@@ -62,7 +64,8 @@ pushed). The owner reviews the set next.**
 
 ## Not verified / known gaps
 - No person has played a full game yet; the e2e suite and AI games are the evidence so far.
-- Sound has not been heard by anyone: the cues are synthesized and only checked to run without errors.
+- Sound has not been heard by anyone: the cues are synthesized and only checked to run without errors, and the battle
+  themes were chosen by score, not by ear. MusicGen's weights are under a non-commercial licence.
 - Animations were checked by sampled frames in headless Chromium, not watched at speed by a person.
 - The rigs are fused single meshes from Hunyuan: big swings stretch the armour at the joint (worst in u05's claw wind-up),
   and the surfaces are softer and more faceted than the concept art.
