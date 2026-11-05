@@ -172,14 +172,23 @@ through the same Hunyuan stages with `--nocut` and 12k faces (`~/Hunyuan3D-2/af_
 fits each to its hex on load and falls back to the old primitive shape. Side colour stays the game's job: rings, flags and
 lights over neutral models.
 
-## Deck textures (2026-11-04)
+## Battlefield (2026-11-04, replaces the deck textures)
 
-Six textures from FLUX.1 dev on the local Flux studio (two seeds each, the cleaner one kept): diamond-plate deck, deck with
-debris, flooded water over plate, scorched plate (under the wrecks), container roof and container side. Cropped and
-written to `public/assets/textures/*.jpg` at 512 px. Every prompt ends "even flat lighting, no shadows, no perspective,
-viewed straight down, fills the whole frame edge to edge, seamless texture, no text". The board keeps one tile set per
-terrain (`SKINS` in `BoardCanvas.tsx`); raised open hexes use the container textures. Metalness stays near 0.1, because
-with no environment map a metallic surface renders almost black.
+The owner found the textured steel deck too rough and the retail game's own plastic tiles too generic, and asked for an
+open battleground instead. The board is now one piece of land with a hex grid painted on it: grass and earth for open
+ground, rubble for debris, a shallow river for water, scorched earth under the wrecks, cracked bedrock on raised hexes
+with rock cliff sides, and the same grass running past the edge of play into fog.
+
+- Six textures from FLUX.1 dev on the local Flux studio (two seeds each): `grass`, `rubble`, `water`, `scorched`,
+  `plateau`, `cliff`, in `public/assets/textures/*.jpg` at 512 px. Prompts ask for a pattern "uniform and evenly
+  distributed across the whole frame, with no central feature, no clearing, no border, no vignette and no path"; without
+  that line Flux composes a clearing or a shoreline, which tiles badly.
+- Each is flattened (divided by a heavy blur, which removes vignettes) and made seamless (blended with its half-offset
+  copy towards the edges) before use. The raw candidates are in `art/textures/raw2/` (local only).
+- `BoardCanvas.tsx` samples every ground texture by world position (`worldMapped`), so it runs on across hex borders, and
+  multiplies in a slow light-and-dark variation from the same texture at a fifth of the scale, so the ground has patches
+  and no hex repeats its neighbour. Cliff sides use the wall's own direction.
+- The grid is one set of thin dark lines; debris hexes also get four loose rocks each.
 
 ## Pipeline per machine (Hunyuan Studio, owner's PC)
 

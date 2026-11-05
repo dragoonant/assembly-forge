@@ -37,8 +37,9 @@ pushed). The owner reviews the set next.**
   destroyed) that the board picks from the current beat. Stand-ins remain as the fallback.
 - Board objects as models (`public/assets/models/props/`): the objective pylon, garrison pillbox, base pad, supply crate,
   energy cell and two wrecks on blocked hexes, each keeping its side-colour ring, flag or light.
-- The hangar-deck skin: textured tiles per terrain (diamond-plate deck, debris, flooded water, scorched plate under the
-  wrecks) and cargo-container tops and sides for raised hexes, each tile turned a random sixth of a turn.
+- The battlefield: one piece of land with a hex grid painted on it, ground textures mapped by world position so they run
+  across hexes (grass and earth, rubble with loose rocks, a shallow river, scorched earth under the wrecks), raised hexes
+  as rock plateaus with cliff sides, and grass carrying on past the board into fog.
 - The figure viewer, `?viewer=u02&clip=walk&t=0.4&yaw=30`, which the e2e suite uses to screenshot every clip.
 - `docs/figures.md`: the M4 brief and the whole pipeline (concepts, re-pose, Hunyuan, `tools/rig/` for rigging, props and
   packing).

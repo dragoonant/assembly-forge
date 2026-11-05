@@ -105,7 +105,11 @@ phase banner are HUD over the canvas, never drawn in three. The dice panel
 keeps its rule: the engine has already rolled, and the panel animates toward
 faces that exist.
 
-### D5. Presentation concept: hangar deck — decided 2026-11-03
+### D5. Presentation concept: hangar deck — decided 2026-11-03, revised 2026-11-04
+
+**Revised 2026-11-04 (owner):** the board is an open battleground, natural land with a hex grid painted on it (grass and
+earth, rubble, a river, rock plateaus with cliff sides), not a steel deck or tiles. The props (pylons, pillboxes, launch
+pads, wrecks) stay as field installations on it. See `docs/figures.md`, "Battlefield". The original decision follows.
 
 The siblings each have one idea every surface comes from, plus a gate: side by
 side, the new game must not be mistakable for any of them. Two candidates:

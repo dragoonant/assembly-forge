@@ -1,10 +1,10 @@
-// The 3D board, drawn from engine state and the affordances derived from legal actions. Terrain is instanced hex prisms, one
-// set per terrain skin; highlights are flat hex rings laid on the tiles; machines are the stand-ins from Machine.tsx. Every click checks
+// The 3D board, drawn from engine state and the affordances derived from legal actions. Terrain is an open battlefield with a hex
+// grid painted on it (instanced hex prisms, one set per terrain); highlights are flat hex rings laid on the tiles; machines are the stand-ins from Machine.tsx. Every click checks
 // the 8 px tap rule first, so a camera drag never also moves a machine.
 import { Line, useTexture } from '@react-three/drei'
 import { Canvas, useFrame, type ThreeEvent } from '@react-three/fiber'
 import { useLayoutEffect, useMemo, useRef } from 'react'
-import { Color, MeshStandardMaterial, Object3D, RepeatWrapping, SRGBColorSpace, type Group, type InstancedMesh } from 'three'
+import { BufferGeometry, Color, Float32BufferAttribute, MeshStandardMaterial, Object3D, RepeatWrapping, SRGBColorSpace, type Group, type InstancedMesh, type Texture } from 'three'
 import { actionForHex, affordances, hexKey } from '../affordances'
 import { cellsOf, losTrace, unitAt, weaponsOf, type Axial, type GameState } from '../engine'
 import { humanTurn, take } from '../game'
@@ -17,30 +17,31 @@ import { Machine, SIDE_COLOUR } from './Machine'
 import { DeployGhost, Effects, Tracer, UnitMover, type WorldOf } from './Motion'
 
 /**
- * The hangar-deck skin (PLAN.md D5): each terrain is a set of tiles with its own top texture, and raised hexes are stacked
- * cargo containers. Textures live in public/assets/textures (docs/figures.md, "Deck textures"). The instance colour tints
- * the texture: a little lighter per level up, and a small per-tile jitter so a field of identical plates does not read as
- * wallpaper. Every tile is also turned a random sixth of a turn, which the hex prism allows for free.
+ * The battlefield (PLAN.md D5, revised 2026-11-04): an open landscape with a hex grid painted on it, not a floor of tiles.
+ * Each terrain draws its own ground (grass and earth, rubble and craters, a shallow river, scorched earth under a wreck,
+ * rock on a raised plateau) and every ground texture is mapped by world position, so it runs on across hex borders and the
+ * board reads as one piece of land. Raised hexes are rock plateaus with cliff sides. A thin dark grid line marks every hex;
+ * debris hexes also carry a few loose rocks. Textures live in public/assets/textures (docs/figures.md, "Battlefield").
  */
 interface Skin {
   top: string
-  side: string
   tint: string
   roughness: number
-  metalness: number
   emissive?: string
 }
 const SKINS: Record<string, Skin> = {
-  open: { top: 'deck_open', side: 'crate_side', tint: '#ffffff', roughness: 0.7, metalness: 0.1 },
-  raised: { top: 'crate_top', side: 'crate_side', tint: '#f2f5f8', roughness: 0.65, metalness: 0.1 },
-  debris: { top: 'deck_debris', side: 'crate_side', tint: '#fff2e0', roughness: 0.8, metalness: 0.1 },
-  water: { top: 'deck_water', side: 'crate_side', tint: '#e6f6ff', roughness: 0.12, metalness: 0.15 },
-  field: { top: 'deck_open', side: 'crate_side', tint: '#c3b0ff', roughness: 0.6, metalness: 0.1, emissive: '#3a2370' },
-  blocked: { top: 'deck_scorched', side: 'crate_side', tint: '#d8d8d8', roughness: 0.85, metalness: 0.1 },
+  open: { top: 'grass', tint: '#f6ffe6', roughness: 0.95 },
+  raised: { top: 'plateau', tint: '#ffffff', roughness: 0.9 },
+  debris: { top: 'rubble', tint: '#ffffff', roughness: 0.95 },
+  water: { top: 'water', tint: '#a9c6c6', roughness: 0.2 },
+  field: { top: 'grass', tint: '#c9b8ff', roughness: 0.8, emissive: '#2a1a55' },
+  blocked: { top: 'scorched', tint: '#ffffff', roughness: 0.95 },
 }
+/** World units per repeat of a ground texture: large, so a repeat spans several hexes and does not read as tiling. */
+const TEXTURE_SPAN = 2.6
 const textureUrl = (name: string): string => import.meta.env.BASE_URL + 'assets/textures/' + name + '.jpg'
-const skinOf = (cell: Cell): string => (cell.terrain === 'open' && cell.elevation > 0 ? 'raised' : SKINS[cell.terrain] ? cell.terrain : 'open')
-const GAP = 0.94 // hex prisms are drawn a hair small so a thin seam shows between tiles
+const skinOf = (cell: Cell): string => (cell.terrain === 'open' ? (cell.elevation > 0 ? 'raised' : 'open') : SKINS[cell.terrain] ? cell.terrain : 'open')
+const GAP = 0.94 // highlight rings sit a hair inside the hex
 const HL = { move: '#5fd17a', dash: '#f0a830', deploy: '#7fd4ff', shoot: '#ff3b30', hover: '#ffffff', push: '#c58cff' } as const
 
 /** Height of the top of a hex, or 0 off the board. */
@@ -50,38 +51,84 @@ function topAt(game: GameState, h: Axial): number {
 }
 
 /** A small stable hash of a hex, for per-tile variety that does not change between renders. */
-function hexHash(c: Axial): number {
-  let h = (c.q * 73856093) ^ (c.r * 19349663)
+function hexHash(c: Axial, salt = 0): number {
+  let h = (c.q * 73856093) ^ (c.r * 19349663) ^ (salt * 83492791)
   h = Math.imul(h ^ (h >>> 13), 0x5bd1e995)
   return ((h ^ (h >>> 15)) >>> 0) / 4294967296
 }
 
-function useSkinMaterials(skin: Skin): MeshStandardMaterial[] {
-  const [top, side] = useTexture([textureUrl(skin.top), textureUrl(skin.side)])
+/**
+ * A standard material whose map is sampled by world position instead of the mesh's UVs: the ground plane (x, z) for a top,
+ * or the wall (along the wall, up) for a cliff side. Instanced meshes are handled, so one material serves a whole tile set.
+ */
+function worldMapped(map: Texture, opts: { roughness: number; emissive?: string }, mode: 'top' | 'side'): MeshStandardMaterial {
+  const m = new MeshStandardMaterial({
+    map,
+    roughness: opts.roughness,
+    metalness: 0,
+    emissive: new Color(opts.emissive ?? '#000000'),
+    emissiveIntensity: opts.emissive ? 0.45 : 0,
+  })
+  m.onBeforeCompile = (sh) => {
+    sh.uniforms.uSpan = { value: TEXTURE_SPAN }
+    sh.vertexShader =
+      'varying vec3 vWorldP;\nvarying vec3 vWorldN;\n' +
+      sh.vertexShader.replace(
+        '#include <project_vertex>',
+        `#include <project_vertex>
+        vec4 wp = vec4(transformed, 1.0);
+        vec3 wn = objectNormal;
+        #ifdef USE_INSTANCING
+          wp = instanceMatrix * wp;
+          wn = mat3(instanceMatrix) * wn;
+        #endif
+        vWorldP = (modelMatrix * wp).xyz;
+        vWorldN = normalize(mat3(modelMatrix) * wn);`,
+      )
+    const uv = mode === 'top' ? 'vWorldP.xz' : '(abs(vWorldN.x) > abs(vWorldN.z) ? vec2(vWorldP.z, vWorldP.y) : vec2(vWorldP.x, vWorldP.y))'
+    sh.fragmentShader =
+      'uniform float uSpan;\nvarying vec3 vWorldP;\nvarying vec3 vWorldN;\n' +
+      sh.fragmentShader.replace(
+        '#include <map_fragment>',
+        // the texture, times a slow light-and-dark variation sampled from its own green channel at a much larger scale, so
+        // the ground has patches and no two hexes repeat
+        `vec2 wuv = ${uv} / uSpan;
+        float patchy = 0.78 + 0.5 * texture2D(map, wuv * 0.19 + vec2(0.37, 0.61)).g;
+        diffuseColor *= texture2D(map, wuv) * vec4(vec3(patchy), 1.0);`,
+      )
+  }
+  m.customProgramCacheKey = () => 'world-mapped-' + mode
+  return m
+}
+
+function useGroundTextures(): Record<string, Texture> {
+  const names = ['grass', 'plateau', 'rubble', 'water', 'scorched', 'cliff']
+  const list = useTexture(names.map(textureUrl))
   return useMemo(() => {
-    const t = top!.clone()
-    t.colorSpace = SRGBColorSpace
-    t.anisotropy = 8
-    t.needsUpdate = true
-    const sideTex = side!.clone()
-    sideTex.colorSpace = SRGBColorSpace
-    sideTex.wrapS = RepeatWrapping
-    sideTex.repeat.set(6, 1) // once per face of the prism
-    sideTex.needsUpdate = true
-    const common = {
-      roughness: skin.roughness,
-      metalness: skin.metalness,
-      emissive: new Color(skin.emissive ?? '#000000'),
-      emissiveIntensity: skin.emissive ? 0.6 : 0,
-    }
-    // CylinderGeometry groups: 0 = side, 1 = top cap, 2 = bottom cap
-    return [new MeshStandardMaterial({ map: sideTex, ...common }), new MeshStandardMaterial({ map: t, ...common }), new MeshStandardMaterial({ color: '#111111' })]
-  }, [top, side, skin])
+    const out: Record<string, Texture> = {}
+    list.forEach((t, i) => {
+      t.colorSpace = SRGBColorSpace
+      t.wrapS = t.wrapT = RepeatWrapping
+      t.anisotropy = 8
+      t.needsUpdate = true
+      out[names[i]!] = t
+    })
+    return out
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [list])
 }
 
 function TileSet({ skin, cells, frame, onPick, onHover }: { skin: Skin; cells: Cell[]; frame: Frame; onPick: (c: Cell) => void; onHover: (c: Cell | null) => void }) {
   const ref = useRef<InstancedMesh>(null)
-  const materials = useSkinMaterials(skin)
+  const tex = useGroundTextures()
+  const materials = useMemo(
+    () => [
+      worldMapped(tex.cliff!, { roughness: 0.95 }, 'side'),
+      worldMapped(tex[skin.top]!, { roughness: skin.roughness, emissive: skin.emissive }, 'top'),
+      new MeshStandardMaterial({ color: '#1b1d20' }),
+    ],
+    [tex, skin],
+  )
   useLayoutEffect(() => {
     const mesh = ref.current
     if (!mesh) return
@@ -91,13 +138,12 @@ function TileSet({ skin, cells, frame, onPick, onHover }: { skin: Skin; cells: C
     cells.forEach((cell, i) => {
       const p = hexToWorld(cell, frame)
       const h = topOf(cell)
-      const r = hexHash(cell)
       o.position.set(p.x, h / 2, p.z)
-      o.rotation.set(0, Math.floor(r * 6) * (Math.PI / 3), 0)
       o.scale.set(1, h, 1)
       o.updateMatrix()
       mesh.setMatrixAt(i, o.matrix)
-      c.copy(base).offsetHSL(0, 0, 0.06 * cell.elevation + (r - 0.5) * 0.08)
+      // higher ground catches a little more light
+      c.copy(base).offsetHSL(0, 0, 0.05 * cell.elevation + (hexHash(cell) - 0.5) * 0.04)
       mesh.setColorAt(i, c)
     })
     mesh.instanceMatrix.needsUpdate = true
@@ -122,8 +168,88 @@ function TileSet({ skin, cells, frame, onPick, onHover }: { skin: Skin; cells: C
       onPointerOut={() => onHover(null)}
     >
       {/* a 6-sided cylinder has a corner on +z, which is pointy-top in this layout; height 1 is scaled per instance */}
-      <cylinderGeometry args={[HEX_SIZE * GAP, HEX_SIZE * GAP, 1, 6]} />
+      <cylinderGeometry args={[HEX_SIZE, HEX_SIZE, 1, 6]} />
     </instancedMesh>
+  )
+}
+
+/** The painted grid: one thin dark outline per hex, just above its ground. */
+function HexGrid({ cells, frame }: { cells: Cell[]; frame: Frame }) {
+  const geometry = useMemo(() => {
+    const pts: number[] = []
+    const r = HEX_SIZE * 0.985
+    for (const cell of cells) {
+      const p = hexToWorld(cell, frame)
+      const y = topOf(cell) + 0.004
+      for (let i = 0; i < 6; i++) {
+        // corners of a pointy-top hex: one on +z
+        const a0 = (i * Math.PI) / 3
+        const a1 = ((i + 1) * Math.PI) / 3
+        pts.push(p.x + Math.sin(a0) * r, y, p.z + Math.cos(a0) * r, p.x + Math.sin(a1) * r, y, p.z + Math.cos(a1) * r)
+      }
+    }
+    const g = new BufferGeometry()
+    g.setAttribute('position', new Float32BufferAttribute(pts, 3))
+    return g
+  }, [cells, frame])
+  return (
+    <lineSegments geometry={geometry} renderOrder={1}>
+      <lineBasicMaterial color="#14120e" transparent opacity={0.42} depthWrite={false} />
+    </lineSegments>
+  )
+}
+
+/** Loose rocks on debris hexes, so rough ground reads in 3D as well as in its texture. */
+function Rocks({ cells, frame }: { cells: Cell[]; frame: Frame }) {
+  const ref = useRef<InstancedMesh>(null)
+  const spots = useMemo(() => {
+    const out: { x: number; y: number; z: number; s: number; r: number }[] = []
+    for (const cell of cells) {
+      if (cell.terrain !== 'debris') continue
+      const p = hexToWorld(cell, frame)
+      for (let k = 0; k < 4; k++) {
+        const a = hexHash(cell, k + 1) * Math.PI * 2
+        const d = 0.12 + hexHash(cell, k + 11) * 0.28
+        out.push({ x: p.x + Math.cos(a) * d, y: topOf(cell), z: p.z + Math.sin(a) * d, s: 0.035 + hexHash(cell, k + 21) * 0.05, r: hexHash(cell, k + 31) * 6 })
+      }
+    }
+    return out
+  }, [cells, frame])
+  useLayoutEffect(() => {
+    const mesh = ref.current
+    if (!mesh) return
+    const o = new Object3D()
+    spots.forEach((s, i) => {
+      o.position.set(s.x, s.y + s.s * 0.4, s.z)
+      o.rotation.set(s.r, s.r * 1.7, s.r * 0.6)
+      o.scale.set(s.s * 1.3, s.s * 0.8, s.s)
+      o.updateMatrix()
+      mesh.setMatrixAt(i, o.matrix)
+    })
+    mesh.instanceMatrix.needsUpdate = true
+    mesh.computeBoundingSphere()
+  }, [spots])
+  if (!spots.length) return null
+  return (
+    <instancedMesh ref={ref} args={[undefined, undefined, spots.length]} castShadow receiveShadow>
+      <dodecahedronGeometry args={[1, 0]} />
+      <meshStandardMaterial color="#6d655b" roughness={0.95} flatShading />
+    </instancedMesh>
+  )
+}
+
+/** The land around the board, in the same grass, so the battlefield carries on past the edge of play. */
+function Surroundings({ frame }: { frame: Frame }) {
+  const tex = useGroundTextures()
+  const material = useMemo(() => {
+    const m = worldMapped(tex.grass!, { roughness: 1 }, 'top')
+    m.color = new Color('#7d8272')
+    return m
+  }, [tex])
+  return (
+    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.002, 0]} receiveShadow material={material}>
+      <planeGeometry args={[frame.halfW * 2 + 60, frame.halfD * 2 + 60]} />
+    </mesh>
   )
 }
 
@@ -139,9 +265,12 @@ function HexTiles({ cells, frame, onPick, onHover }: { cells: Cell[]; frame: Fra
   }, [cells])
   return (
     <>
+      <Surroundings frame={frame} />
       {groups.map(([k, cs]) => (
         <TileSet key={k} skin={SKINS[k]!} cells={cs} frame={frame} onPick={onPick} onHover={onHover} />
       ))}
+      <HexGrid cells={cells} frame={frame} />
+      <Rocks cells={cells} frame={frame} />
       <Wrecks cells={cells} frame={frame} />
     </>
   )
@@ -407,13 +536,10 @@ function Scene() {
 
   return (
     <>
-      <color attach="background" args={['#0d0f12']} />
-      <hemisphereLight args={['#cfd8e6', '#1a1c20', 0.55]} />
-      <directionalLight position={[6, 14, 8]} intensity={1.6} castShadow shadow-mapSize={[2048, 2048]} shadow-camera-left={-12} shadow-camera-right={12} shadow-camera-top={12} shadow-camera-bottom={-12} />
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]} receiveShadow>
-        <planeGeometry args={[frame.halfW * 2 + 8, frame.halfD * 2 + 8]} />
-        <meshStandardMaterial color="#15171b" roughness={0.95} />
-      </mesh>
+      <color attach="background" args={['#3a4450']} />
+      <fog attach="fog" args={['#3a4450', 22, 55]} />
+      <hemisphereLight args={['#e6eef6', '#5a5038', 1.0]} />
+      <directionalLight position={[6, 14, 8]} intensity={2.1} castShadow shadow-mapSize={[2048, 2048]} shadow-camera-left={-12} shadow-camera-right={12} shadow-camera-top={12} shadow-camera-bottom={-12} />
       <HexTiles cells={cells} frame={frame} onPick={onPick} onHover={(c) => setStore({ hoverHex: c ? { q: c.q, r: c.r } : null })} />
       {[...af.moveTo.entries()].map(([k, a]) => (
         <HexRing key={'m' + k} at={hexToWorld(a.to!, frame)} y={topAt(game, a.to!)} colour={a.type === 'dash' ? HL.dash : HL.move} />
