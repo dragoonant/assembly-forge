@@ -130,6 +130,34 @@ test('a whole AI-vs-AI game plays through the client', async ({ page }) => {
   expect(errors).toEqual([])
 })
 
+test('watch CPU vs CPU from the select screen, then take over', async ({ page }) => {
+  const errors = watchErrors(page)
+  await page.goto('./?speed=fast&seed=e2e-watch')
+  await page.getByTestId('watch-bots').click()
+  await expect(page.getByTestId('brief')).toBeVisible()
+  await expect(page.getByTestId('deploy')).toHaveText('Watch', { timeout: 30_000 })
+  await page.getByTestId('deploy').click()
+  await expect(page.getByTestId('watching')).toBeVisible()
+  // nobody touches anything: both sides play
+  await page.waitForFunction(() => {
+    const g = window.__game!.state()!
+    return Object.values(g.units).filter((u) => u.side === 0 && u.hex).length > 0 && Object.values(g.units).filter((u) => u.side === 1 && u.hex).length > 0
+  }, null, { timeout: 90_000 })
+  await page.waitForTimeout(600)
+  await page.screenshot({ path: 'e2e-out/watch-bots.png' })
+  await page.getByTestId('take-over').click()
+  await expect(page.getByTestId('watching')).toHaveCount(0)
+  // the next time side 0 decides, it waits for the player
+  await page.waitForFunction(() => {
+    const g = window.__game!.state()!
+    return !window.__game!.busy() && g.activation !== null && g.units[g.activation.uid]!.side === 0
+  }, null, { timeout: 120_000 })
+  const before = await page.evaluate(() => window.__game!.state()!.log.length)
+  await page.waitForTimeout(2500)
+  expect(await page.evaluate(() => window.__game!.state()!.log.length)).toBe(before)
+  expect(errors).toEqual([])
+})
+
 test('the HUD fits a phone in landscape, and every panel folds', async ({ page }) => {
   await page.setViewportSize({ width: 844, height: 390 })
   await page.goto('./?team=t_lance&foe=t_hammer&seed=e2e-phone&auto=1')

@@ -94,6 +94,14 @@ A pack unit may name `counterpart`, the built-in unit with the same numbers and 
 `standIn`): the AI's matchup table (`src/ai/matchups.json`) knows units by their built-in ids, so the squad picker
 reads a pack unit's record through it.
 
+## Layouts for self-play
+
+A file `layout-<name>.js` in the same folder with a named export in the shape of `OUR_LAYOUT`
+(`src/content/scenarios/skirmish.js`: side 0's half of the terrain, Garrisons and pickups, mirrored through the centre,
+plus the whole list of Objectives) is a board layout for `node tools/ai-matchups.js layout=<name>`. It has no default
+export, so the client's pack loader skips it, and like the packs it never leaves the machine. Write that run's table to
+another `out=`, since the squad picker reads the default one.
+
 ## Testing
 
 `tests/engine/pack-suite.js` registers an invented test pack, plays a full AI game on it, and checks that switching back

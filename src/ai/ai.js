@@ -96,7 +96,15 @@ export const TUNING = ({
   beam: 8,
 
   /** Preference for finishing something already wounded over starting fresh. */
-  focusFire: 14
+  focusFire: 14,
+
+  /**
+   * How much of an enemy's attack counts against a hex it cannot reach yet but could after its Advance (2026-11-05).
+   * At 0 the danger check sees only weapons already in range, so a melee machine three hexes off looks harmless
+   * though it can step in and strike in the same activation. A fraction, not 1: it may not come, and it has no line
+   * of sight to check from where it would stand.
+   */
+  threatReach: 0.5
 });
 
 /**
@@ -401,7 +409,16 @@ export function scoreChoose(state, action, side) {
   } catch (e) {
     return -TUNING.wasted;
   }
-  return Evaluate.evaluate(after, side) - before;
+  let gain = Evaluate.evaluate(after, side) - before;
+  // The evaluator counts an Upgrade the same on any machine, so moving one is a wash to it; credit the move by how
+  // much better the receiving machine uses it, and a pass by nothing.
+  const p = state.pending;
+  if (p && p.kind === 'choose' && p.what === 'transfer' && action.targetUid) {
+    const to = state.units[action.targetUid];
+    const from = state.units[to.uid === p.a ? p.b : p.a];
+    gain += (upgradeUse(to) - upgradeUse(from)) * 3;
+  }
+  return gain;
 }
 
 /** Whether the activating unit can attack right now, remembered per state (scoreEffectSet asks once per option). */
@@ -444,8 +461,12 @@ export function scoreMove(state, action, side) {
   // Compared against the same figure from where the unit already stands, so a
   // move is credited with the offence it ADDS rather than with offence the
   // unit had anyway.
-  const offenceHere = bestAttackValue(state, action.uid, side);
-  const offenceThere = bestAttackValue(moved, action.uid, side);
+  //
+  // A Rescue counts as well as a shot (2026-11-05): on a board with several Garrisons a side, standing next to one is
+  // worth as much as a firing position, and without this nothing but the small proximity term ever walked a machine
+  // to its own Garrisons.
+  const offenceHere = Math.max(bestAttackValue(state, action.uid, side), bestRescueValue(state, action.uid));
+  const offenceThere = Math.max(bestAttackValue(moved, action.uid, side), bestRescueValue(moved, action.uid));
   gain += (offenceThere - offenceHere) * TUNING.offence;
 
   // ...and what can be done TO it. The nearest thing to opponent modelling
@@ -496,6 +517,49 @@ export function bestAttackValue(state, uid, side) {
 }
 
 /**
+ * The best Rescue this unit could make from where it stands, in the same raw units as `bestAttackValue`: a Rescue of
+ * an adjacent allied Garrison while its Primary Action is still unused, or a Command that rescues and that it can use
+ * now. Zero when there is none.
+ *
+ * @param {Object} state
+ * @param {string} uid
+ * @returns {number}
+ */
+export function bestRescueValue(state, uid) {
+  const u = state.units[uid];
+  if (!u || !u.alive || !u.hex) return 0;
+  const act = state.activation;
+  if (!act || act.uid !== uid) return 0;
+  let best = 0;
+  if (!act.slots.primary && Actions.rescueTargets(state, u).length) best = scoreRescue(state, null);
+  const list = Effects.abilitiesOf(u);
+  for (let i = 0; i < list.length; i++) {
+    const a = list[i];
+    if (a.timing !== 'command' || act.commandsUsed.indexOf(a.aid) !== -1) continue;
+    if (!(a.effects || []).some(function (e) { return e.k === 'rescue'; })) continue;
+    if (!Effects.canUseCommand(state, u, a) || !Effects.targetOptions(state, u, a).length) continue;
+    const v = state.rules.scoring.garrisonRescueVp * Evaluate.WEIGHTS.vp * 0.5;
+    if (v > best) best = v;
+  }
+  return best;
+}
+
+/**
+ * How much a unit gets out of an Upgrade: its hardest-hitting weapon (Strength and Accuracy Upgrades feed it) and
+ * what it is worth (a Shield on a valuable machine protects more bounty). Used to see whether handing an Upgrade
+ * over is a gain.
+ *
+ * @param {Object} u
+ * @returns {number}
+ */
+function upgradeUse(u) {
+  let strength = 0;
+  const weapons = u.weapons || [];
+  for (let i = 0; i < weapons.length; i++) if ((weapons[i].strength || 0) > strength) strength = weapons[i].strength;
+  return strength + u.vp * 0.5 + (u.weapons || []).some(function (w) { return w.range > 1; }) * 2;
+}
+
+/**
  * Expected damage every living enemy could put on this unit where it stands.
  *
  * Deliberately pessimistic: it assumes every enemy shoots this unit with its
@@ -522,12 +586,16 @@ export function incomingThreat(state, uid) {
     const weapons = Combat.weaponsOf(foe);
     for (let j = 0; j < weapons.length; j++) {
       const w = weapons[j];
-      if (Hex.distance(foe.hex, me.hex) > w.range) continue;
-      if (!w.ignoreLos &&
+      const d = Hex.distance(foe.hex, me.hex);
+      let scale = 1;
+      if (d > w.range) {
+        if (!TUNING.threatReach || d > w.range + state.rules.movement.advanceHexes + State.upgradeCount(foe, 'speed')) continue;
+        scale = TUNING.threatReach;
+      } else if (!w.ignoreLos &&
           !Los.hasLos(state, foe.hex, me.hex, { side: foe.side, targetUid: me.uid })) continue;
       const shift = Combat.accuracyShift(state, foe, w, me.hex);
       const dice = Combat.strengthOf(state, foe, w);
-      const expected = Combat.expectedHits(state.rules, dice, shift);
+      const expected = Combat.expectedHits(state.rules, dice, shift) * scale;
       if (expected > worst) worst = expected;
     }
     total += worst;
@@ -665,7 +733,16 @@ function scoreEffectSet(state, action, a, u) {
           return o.hex && (!e.trait || (o.traits || []).indexOf(e.trait) !== -1);
         }).length);
         break;
-      case 'transfer': value -= TUNING.wasted; break;
+      case 'transfer': {
+        // Worth something only when an Upgrade would end up on the machine that uses it better (2026-11-05: scored
+        // as wasted before, so the support walker never shared its Shields).
+        const t = action.targetUid ? state.units[action.targetUid] : null;
+        if (!t) { value -= TUNING.wasted; break; }
+        const gap = upgradeUse(t) - upgradeUse(u);
+        const movable = gap > 0 ? u.upgrades.length : t.upgrades.length;
+        value += movable ? Math.min(movable, 3) * 12 * Math.min(1, Math.abs(gap) / 4) : -TUNING.wasted;
+        break;
+      }
       case 'steal': {
         const t = action.targetUid ? state.units[action.targetUid] : null;
         if (!t) { value -= TUNING.wasted; break; }
@@ -776,7 +853,27 @@ export function scoreEnergize(state, action, side) {
   }
   if (cheapest === Infinity || u.energy >= cheapest) return 0.01;
 
-  return Evaluate.WEIGHTS.energy / state.rules.actions.energize.tlCost;
+  // What the Energy buys right now (2026-11-05): a Command is free and can follow the Primary Action in the same
+  // activation, so Energize-then-Command is worth most of the Command, per Timeline point. Without this, banking
+  // Energy scored 0.75 against any attack's tens, and a machine whose best play is an Energy Command (the support
+  // walker's Rescue from range) almost never had the Energy for it.
+  let unlocked = 0;
+  let after = null;
+  try { after = Apply.apply(state, action); } catch (e) { after = null; }
+  if (after && after.activation && after.activation.uid === u.uid) {
+    const me = after.units[u.uid];
+    for (let i = 0; i < list.length; i++) {
+      const a = list[i];
+      if (a.timing !== 'command' || !a.energy || a.energy <= u.energy) continue;
+      if (after.activation.commandsUsed.indexOf(a.aid) !== -1 || !Effects.canUseCommand(after, me, a)) continue;
+      for (const opt of Effects.targetOptions(after, me, a)) {
+        const v = scoreEffectSet(after, Object.assign({ type: 'command', uid: u.uid, aid: a.aid }, opt), a, me);
+        if (v > unlocked) unlocked = v;
+      }
+    }
+  }
+  const banked = Evaluate.WEIGHTS.energy / state.rules.actions.energize.tlCost;
+  return Math.max(banked, unlocked * 0.8 / Math.max(TUNING.tempoFloor, state.rules.actions.energize.tlCost));
 }
 
 /**

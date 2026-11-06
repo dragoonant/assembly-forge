@@ -115,4 +115,30 @@ T.suite('ai', function () {
     dead.players[0].vp += wounded.units.b1.vp;
     T.ok(Evaluate.evaluate(dead, 0) > Evaluate.evaluate(wounded, 0));
   });
+
+  T.test('with nothing to shoot, it walks to its own Garrison and Rescues it', function () {
+    // 2026-11-05: a move was credited for the shot it opened up but not for a Rescue, so on a board with Garrisons
+    // spread over it a side rescued about one of its seven a game. The Garrison is three hexes off, so an Advance
+    // ends next to it and the Primary Action that follows is the Rescue.
+    const g = F.game({
+      seed: 'ai-rescue',
+      units: [F.unit('a1', 'u02', 0, H(-3, 0), { tl: 1 }), F.unit('b1', 'u06', 1, H(6, 0), { tl: 9 })],
+      garrisons: [{ gid: 'g1', side: 0, hex: H(-3, 4) }]
+    });
+    const after = AI.playActivation(g);
+    T.notOk(after.garrisons.g1.alive, 'the Garrison was rescued');
+    T.ok(after.log.some(function (e) { return e.t === 'garrison_rescued' && e.uid === 'a1'; }), 'by the unit that walked to it');
+  });
+
+  T.test('a Rescue opened up by a move counts like a shot opened up by one', function () {
+    const g = F.game({
+      seed: 'ai-rescue-value',
+      units: [F.unit('a1', 'u02', 0, H(-3, 0), { tl: 1 }), F.unit('b1', 'u06', 1, H(6, 0), { tl: 9 })],
+      garrisons: [{ gid: 'g1', side: 0, hex: H(-3, 2) }]
+    });
+    T.eq(AI.bestRescueValue(g, 'a1'), 0, 'nothing to rescue from two hexes off');
+    const next = Actions.legalActions(g).find(function (a) { return a.type === 'advance' && Hex.distance(a.to, H(-3, 2)) === 1; });
+    T.ok(next, 'an Advance ends next to it');
+    T.ok(AI.bestRescueValue(Apply.apply(g, next), 'a1') > 0, 'and from there the Rescue is worth something');
+  });
 });

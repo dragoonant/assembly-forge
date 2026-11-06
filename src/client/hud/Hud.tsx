@@ -22,7 +22,7 @@ import {
   type GameState,
   type Side,
 } from '../engine'
-import { humanTurn, newGame, setSpeed, take } from '../game'
+import { humanTurn, newGame, setSpeed, take, takeOver } from '../game'
 import { setStore, useGame, type Speed } from '../store'
 import { viewApi } from '../board/viewApi'
 import { describe } from './feed'
@@ -54,10 +54,11 @@ function useAffordances() {
 
 function TopBar({ game }: { game: GameState }) {
   const speed = useGame((s) => s.speed)
+  const watching = useGame((s) => s.watching)
   const act = game.activation
   const actor = act ? game.units[act.uid] : null
   return (
-    <header className="topbar" data-testid="topbar">
+    <header className={'topbar' + (watching ? ' watch' : '')} data-testid="topbar">
       <h1>{UI.title}</h1>
       <div className="score">
         <span className="s0">{sideName(0)} {game.players[0]!.vp}</span>
@@ -71,6 +72,14 @@ function TopBar({ game }: { game: GameState }) {
         )}
       </div>
       <div className="tools">
+        {watching && (
+          <>
+            <span className="watching" data-testid="watching">Watching</span>
+            <button className="take-over" data-testid="take-over" onClick={takeOver} title="Play your side from here">
+              Take over
+            </button>
+          </>
+        )}
         {(['normal', 'fast', 'instant'] as Speed[]).map((s) => (
           <button key={s} className={'speed' + (speed === s ? ' on' : '')} onClick={() => setSpeed(s)} title={'Opponent speed: ' + s}>
             {s === 'normal' ? '1×' : s === 'fast' ? '3×' : '»'}

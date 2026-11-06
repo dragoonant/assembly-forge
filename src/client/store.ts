@@ -60,6 +60,10 @@ export interface GameStore {
   speed: Speed
   /** Which sides the AI plays. The human is side 0 unless both are AI (spectating, and the e2e test). */
   ai: [boolean, boolean]
+  /** What `ai` goes back to on a new game: the URL's `?ai=` choice, or the CPU on side 1. */
+  aiBase: [boolean, boolean]
+  /** Watching the CPU play both sides, started from the select screen; Take over hands side 0 back. */
+  watching: boolean
   /** Bumped on every engine state change, so derived data can memo on it. */
   rev: number
   /** The blocking animation beat now playing, with its start time (performance.now) and length in ms. */
@@ -97,6 +101,8 @@ export const useGame = create<GameStore>(() => ({
   dice: null,
   speed: 'normal',
   ai: [false, true],
+  aiBase: [false, true],
+  watching: false,
   rev: 0,
   beat: null,
   beatStart: 0,

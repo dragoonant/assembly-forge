@@ -4,7 +4,7 @@
 // squad is revealed; then on to the briefing.
 import { useState } from 'react'
 import { displayName, roleName } from '../engine'
-import { addToSquad, clearSquads, removeFromSquad, rollCpuSquad, setDifficulty, toBrief } from '../game'
+import { addToSquad, clearSquads, removeFromSquad, rollCpuSquad, setDifficulty, toBrief, watchBots } from '../game'
 import { DIFFICULTIES, DIFFICULTY_HINT, DIFFICULTY_LABEL, canAdd, pool, squadSize } from '../squads'
 import { useGame } from '../store'
 import { portraitUrl, UnitCardFace } from './Cards'
@@ -112,6 +112,9 @@ export function SquadSelect() {
         <div className="ss-vs">VS</div>
         <Slots side={1} squad={cpu ?? []} reveal={Boolean(cpu)} />
         <div className="ss-actions">
+          <button onClick={() => watchBots()} data-testid="watch-bots" title={full ? 'The CPU plays your squad against its own pick' : 'The CPU picks and plays both squads'}>
+            Watch CPU vs CPU
+          </button>
           {mine.length > 0 && (
             <button onClick={clearSquads} data-testid="clear-squad">
               Clear

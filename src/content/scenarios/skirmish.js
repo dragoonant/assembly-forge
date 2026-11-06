@@ -67,17 +67,17 @@ const HALF_TERRAIN = [
   [[9, 5], { terrain: 'blocked' }]
 ];
 
-function terrainLayout() {
+function terrainLayout(half) {
   const out = [];
   const seen = {};
-  for (let i = 0; i < HALF_TERRAIN.length; i++) {
-    const pair = HALF_TERRAIN[i][0];
+  for (let i = 0; i < half.length; i++) {
+    const pair = half[i][0];
     const pairs = [pair, mirror(pair)];
     for (let j = 0; j < pairs.length; j++) {
       const k = pairs[j][0] + ',' + pairs[j][1];
       if (seen[k]) continue;
       seen[k] = true;
-      out.push([pairs[j], HALF_TERRAIN[i][1]]);
+      out.push([pairs[j], half[i][1]]);
     }
   }
   return out;
@@ -122,12 +122,7 @@ export function squadsFor(playerTeam, enemyTeam) {
  * Two Garrisons per side, out on the flanks of each player's own half: close
  * enough to Rescue early, exposed enough that the enemy can reach them.
  */
-const GARRISONS = [
-  { gid: 'g1', side: 0, at: [3, 1] },
-  { gid: 'g2', side: 0, at: [2, 12] },
-  { gid: 'g3', side: 1, at: mirror([3, 1]) },
-  { gid: 'g4', side: 1, at: mirror([2, 12]) }
-];
+const HALF_GARRISONS = [[3, 1], [2, 12]];
 
 /**
  * Three neutral Objectives, scored at the end of each Phase by whoever controls
@@ -150,10 +145,31 @@ const HALF_PICKUPS = [
   { kind: 'energy', at: [4, 7] }
 ];
 
-function pickupLayout() {
+/**
+ * This project's own layout. A layout is authored as side 0's half: `terrain` and `pickups` are mirrored onto the
+ * other half, `garrisons` are side 0's and mirror onto side 1's, and `objectives` is the whole list. Another layout of
+ * the same shape can be passed to `skirmish({layout})`; one kept in the git-ignored local pack folder is how a
+ * published scenario is tried in self-play without entering the repository.
+ */
+export const OUR_LAYOUT = Object.freeze({
+  id: 'ours',
+  terrain: HALF_TERRAIN,
+  garrisons: HALF_GARRISONS,
+  objectives: OBJECTIVES,
+  pickups: HALF_PICKUPS
+});
+
+function garrisonLayout(half) {
   const out = [];
-  for (let i = 0; i < HALF_PICKUPS.length; i++) {
-    const p = HALF_PICKUPS[i];
+  for (let i = 0; i < half.length; i++) out.push({ gid: 'g' + (i + 1), side: 0, at: half[i] });
+  for (let i = 0; i < half.length; i++) out.push({ gid: 'g' + (half.length + i + 1), side: 1, at: mirror(half[i]) });
+  return out;
+}
+
+function pickupLayout(half) {
+  const out = [];
+  for (let i = 0; i < half.length; i++) {
+    const p = half[i];
     out.push({ pid: 'p' + (2 * i + 1), kind: p.kind, upgrade: p.upgrade, at: p.at });
     out.push({ pid: 'p' + (2 * i + 2), kind: p.kind, upgrade: p.upgrade, at: mirror(p.at) });
   }
@@ -173,7 +189,8 @@ export const LAYOUT = Object.freeze({
 });
 
 /**
- * @param {Object} [opts] `{seed, rules, playerSquad, enemySquad, playerTeam, enemyTeam, decks}`. A squad is an array
+ * @param {Object} [opts] `{seed, rules, playerSquad, enemySquad, playerTeam, enemyTeam, decks, layout}`; `layout` is
+ *        `OUR_LAYOUT` unless given. A squad is an array
  *        of three unit ids from `Units.pool()`; an illegal one is ignored. Team ids from `src/content/teams.js` are the
  *        older way to choose and are used only when no squad is given. The same squad on both sides is a legal mirror. `decks` is an optional
  *        `[cids | null, cids | null]`, the players' own choice of cards; a side without a legal choice gets the
@@ -182,8 +199,9 @@ export const LAYOUT = Object.freeze({
  */
 export function skirmish(opts) {
   const o = opts || {};
+  const layout = o.layout || OUR_LAYOUT;
   const hexes = {};
-  const terrain = terrainLayout();
+  const terrain = terrainLayout(layout.terrain);
   for (let i = 0; i < terrain.length; i++) {
     hexes[Hex.key(axial(terrain[i][0]))] = terrain[i][1];
   }
@@ -222,15 +240,15 @@ export function skirmish(opts) {
     rules: o.rules,
     board: { cols: COLS, rows: ROWS, shortRows: true, hexes: hexes },
     bases: LAYOUT.bases,
-    pickups: pickupLayout().map(function (p) {
+    pickups: pickupLayout(layout.pickups).map(function (p) {
       return { pid: p.pid, kind: p.kind, upgrade: p.upgrade, hex: axial(p.at) };
     }),
     units: units,
     tactics: decks,
-    garrisons: GARRISONS.map(function (g) {
+    garrisons: garrisonLayout(layout.garrisons).map(function (g) {
       return { gid: g.gid, side: g.side, hex: axial(g.at) };
     }),
-    objectives: OBJECTIVES.map(function (o2) {
+    objectives: layout.objectives.map(function (o2) {
       return { oid: o2.oid, hex: axial(o2.at), vp: o2.vp };
     })
   };

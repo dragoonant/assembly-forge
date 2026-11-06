@@ -1,7 +1,12 @@
 /**
  * Unit-versus-unit matchup table, from AI self-play across random squads.
  *
- *   node tools/ai-matchups.js [games] [workers=N] [out=src/ai/matchups.json]
+ *   node tools/ai-matchups.js [games] [workers=N] [out=src/ai/matchups.json] [layout=ours|<name>]
+ *
+ * `layout=<name>` plays on the layout exported from `src/content/packs/local/layout-<name>.js`, a git-ignored file,
+ * to try a published scenario in self-play. `tune=key:value,key:value` overrides `AI.TUNING` for the run (both sides),
+ * to measure an AI change without editing it. Write that run's table somewhere other than the default `out`, since the
+ * AI's counter-picking reads the default one.
  *
  * Every game gives each side a random legal squad from the built-in pool (three units, a unit once unless it is Mass
  * Produced) and plays it out with the AI on both sides. For every unit A on one side and unit B on the other (each
@@ -24,9 +29,26 @@ import * as Rng from '../src/engine/rng.js';
 import * as Squad from '../src/ai/squad.js';
 import * as State from '../src/engine/state.js';
 import * as Units from '../src/content/units.js';
-import { skirmish } from '../src/content/scenarios/skirmish.js';
+import { skirmish, OUR_LAYOUT } from '../src/content/scenarios/skirmish.js';
 
 const SELF = fileURLToPath(import.meta.url);
+
+/** The layout this run plays on: ours, or a local one named by `layout=<name>` (passed to the workers in the env). */
+const LAYOUT_NAME = process.env.MATCHUP_LAYOUT || (process.argv.slice(2).find(function (a) { return a.indexOf('layout=') === 0; }) || 'layout=ours').slice(7);
+async function loadLayout(name) {
+  if (name === 'ours') return OUR_LAYOUT;
+  const mod = await import('../src/content/packs/local/layout-' + name + '.js');
+  const found = Object.values(mod).find(function (v) { return v && v.terrain && v.garrisons; });
+  if (!found) throw new Error('No layout in src/content/packs/local/layout-' + name + '.js');
+  return found;
+}
+const LAYOUT = await loadLayout(LAYOUT_NAME);
+const TUNE = process.env.MATCHUP_TUNE || (process.argv.slice(2).find(function (a) { return a.indexOf('tune=') === 0; }) || 'tune=').slice(5);
+if (TUNE) {
+  const o = {};
+  for (const kv of TUNE.split(',')) { const [k, v] = kv.split(':'); o[k] = Number(v); }
+  AI.tune(o);
+}
 
 /** The squads for game i: the same on every machine and for any number of workers. */
 export function squadsFor(i) {
@@ -38,7 +60,7 @@ export function squadsFor(i) {
 function playGame(i) {
   const squads = squadsFor(i);
   try {
-    const out = AI.playOut(State.createGame(skirmish({ seed: 'matchup-' + i, playerSquad: squads[0], enemySquad: squads[1] })));
+    const out = AI.playOut(State.createGame(skirmish({ seed: 'matchup-' + i, playerSquad: squads[0], enemySquad: squads[1], layout: LAYOUT })));
     const passes = out.state.log.filter(function (e) { return e.t === 'no_primary'; }).length;
     return { i: i, squads: squads, winner: out.state.winner, vp: out.state.players.map(function (p) { return p.vp; }), passes: passes };
   } catch (e) {
@@ -112,7 +134,7 @@ for (let w = 0; w < workers; w++) {
   const to = Math.min(games, from + per);
   if (from >= to) continue;
   running++;
-  const child = fork(SELF, [], { env: Object.assign({}, process.env, { MATCHUP_WORKER: from + ':' + to }) });
+  const child = fork(SELF, [], { env: Object.assign({}, process.env, { MATCHUP_WORKER: from + ':' + to, MATCHUP_LAYOUT: LAYOUT_NAME, MATCHUP_TUNE: TUNE }) });
   child.on('message', function (r) {
     record(r);
     done++;
@@ -133,6 +155,8 @@ function finish() {
     note: 'Unit-versus-unit records from AI self-play across random legal squads (tools/ai-matchups.js). vs[a][b] counts ' +
       'games with a on one side and b on the other; wins are games a\'s side won. Regenerate after any balance or AI change.',
     generated: new Date().toISOString().slice(0, 10),
+    layout: LAYOUT_NAME,
+    tune: TUNE || undefined,
     games: totals.games,
     crashes: totals.crashes,
     forcedPasses: totals.passes,

@@ -34,7 +34,8 @@ export function newGame(): void {
   epoch++
   diceDone = null
   clearEffects()
-  setStore({ screen: 'select', mySquad: [], foeSquad: null, myDeck: null, game: null, armed: null, openItem: null, picks: null, selected: null, busy: false, dice: null })
+  const { aiBase } = getStore()
+  setStore({ screen: 'select', mySquad: [], foeSquad: null, myDeck: null, game: null, armed: null, openItem: null, picks: null, selected: null, busy: false, dice: null, watching: false, ai: [aiBase[0], aiBase[1]] })
   battleMusic(false)
   music(true)
 }
@@ -93,7 +94,28 @@ export function resetDeck(): void {
 }
 
 export function toSelect(): void {
-  setStore({ screen: 'select' })
+  const { watching, aiBase } = getStore()
+  // backing out of a watched match's briefing is back to playing it yourself
+  setStore(watching ? { screen: 'select', watching: false, ai: [aiBase[0], aiBase[1]] } : { screen: 'select' })
+}
+
+/**
+ * Watch the CPU play both sides. Side 0 is the player's squad when it is full, otherwise one the CPU picks at random;
+ * side 1 is the CPU's pick against it at the chosen difficulty. Goes to the briefing, which loads the models first.
+ */
+export function watchBots(seed?: string): void {
+  const { mySquad, difficulty } = getStore()
+  const s = seed ?? 'watch-' + Date.now()
+  const mine = mySquad.length >= squadSize() ? mySquad.slice() : cpuSquad([], 'random', s + '-a')
+  const foe = cpuSquad(mine, difficulty, s + '-b')
+  preloadSquads([...mine, ...foe])
+  setStore({ mySquad: mine, foeSquad: foe, myDeck: null, watching: true, ai: [true, true], screen: 'brief' })
+}
+
+/** Stop watching: side 0 is the player's from its next decision on. */
+export function takeOver(): void {
+  const { ai } = getStore()
+  setStore({ watching: false, ai: [false, ai[1]] })
 }
 
 /** Build the match and start playing. */

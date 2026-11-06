@@ -40,6 +40,7 @@ function Brief() {
   const mySquad = useGame((s) => s.mySquad)
   const foeSquad = useGame((s) => s.foeSquad)
   const myDeck = useGame((s) => s.myDeck)
+  const watching = useGame((s) => s.watching)
   const S = Names.SETUP
   const brief = Names.SCENARIOS[SCENARIO_ID]
   const squads: [string[], string[]] = [mySquad, foeSquad ?? []]
@@ -60,7 +61,7 @@ function Brief() {
       <div className="forces">
         {([0, 1] as const).map((side) => (
           <div key={side} className={'force s' + side}>
-            <h4>{side === HUMAN ? S.yourSquad : S.enemySquad} · {sideName(side)}</h4>
+            <h4>{watching ? 'CPU' : side === HUMAN ? S.yourSquad : S.enemySquad} · {sideName(side)}</h4>
             <div className="brief-cards">
               {squads[side].map((d, i) => (
                 <UnitCardFace key={d + i} defId={d} side={side} size="mini" />
@@ -69,11 +70,11 @@ function Brief() {
           </div>
         ))}
       </div>
-      <DeckPicker squad={squads[HUMAN]} />
+      {!watching && <DeckPicker squad={squads[HUMAN]} />}
       <div className="setup-foot">
         <button onClick={toSelect}>{S.back}</button>
         <button className="setup-go" data-testid="deploy" disabled={!deckOk || !models.ready} onClick={() => deploy()}>
-          {models.ready ? S.deploy : 'Loading models ' + models.loaded + '/' + models.total}
+          {models.ready ? (watching ? 'Watch' : S.deploy) : 'Loading models ' + models.loaded + '/' + models.total}
         </button>
       </div>
     </div>

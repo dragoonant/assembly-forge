@@ -1,105 +1,106 @@
 {
  "note": "Unit-versus-unit records from AI self-play across random legal squads (tools/ai-matchups.js). vs[a][b] counts games with a on one side and b on the other; wins are games a's side won. Regenerate after any balance or AI change.",
- "generated": "2026-11-05",
+ "generated": "2026-11-06",
+ "layout": "ours",
  "games": 3600,
  "crashes": 0,
  "forcedPasses": 0,
  "seatWins": [
-  1744,
-  1856
+  1832,
+  1768
  ],
- "seconds": 688,
+ "seconds": 676,
  "units": {
   "u01": {
    "games": 1088,
-   "wins": 621
+   "wins": 620
   },
   "u02": {
    "games": 1168,
-   "wins": 666
+   "wins": 601
   },
   "u03": {
    "games": 1134,
-   "wins": 549
+   "wins": 576
   },
   "u04": {
    "games": 1151,
-   "wins": 563
+   "wins": 566
   },
   "u05": {
    "games": 1114,
-   "wins": 630
+   "wins": 641
   },
   "u06": {
    "games": 1089,
-   "wins": 525
+   "wins": 459
   },
   "u07": {
    "games": 1182,
-   "wins": 515
+   "wins": 586
   },
   "u08": {
    "games": 1282,
-   "wins": 331
+   "wins": 343
   },
   "u09": {
    "games": 1121,
-   "wins": 516
+   "wins": 514
   },
   "u10": {
    "games": 1123,
-   "wins": 620
+   "wins": 639
   },
   "u11": {
    "games": 1145,
-   "wins": 675
+   "wins": 652
   },
   "u12": {
    "games": 1201,
-   "wins": 791
+   "wins": 726
   },
   "u13": {
    "games": 1077,
-   "wins": 513
+   "wins": 536
   },
   "u14": {
    "games": 1138,
-   "wins": 642
+   "wins": 682
   },
   "u15": {
    "games": 1177,
-   "wins": 533
+   "wins": 541
   }
  },
  "vs": {
   "u01": {
    "u02": {
     "games": 186,
-    "wins": 92
+    "wins": 109
    },
    "u03": {
     "games": 207,
-    "wins": 122
+    "wins": 104
    },
    "u04": {
     "games": 168,
-    "wins": 91
+    "wins": 94
    },
    "u05": {
     "games": 224,
-    "wins": 115
+    "wins": 117
    },
    "u06": {
     "games": 179,
-    "wins": 110
+    "wins": 105
    },
    "u07": {
     "games": 208,
-    "wins": 122
+    "wins": 125
    },
    "u08": {
     "games": 226,
-    "wins": 171
+    "wins": 179
    },
    "u09": {
     "games": 199,
@@ -107,417 +108,417 @@
    },
    "u10": {
     "games": 202,
-    "wins": 97
+    "wins": 89
    },
    "u11": {
     "games": 187,
-    "wins": 95
+    "wins": 101
    },
    "u12": {
     "games": 195,
-    "wins": 85
+    "wins": 79
    },
    "u13": {
     "games": 186,
-    "wins": 113
+    "wins": 99
    },
    "u14": {
     "games": 202,
-    "wins": 114
+    "wins": 93
    },
    "u15": {
     "games": 210,
-    "wins": 135
+    "wins": 144
    }
   },
   "u02": {
    "u01": {
     "games": 186,
-    "wins": 94
+    "wins": 77
    },
    "u03": {
     "games": 212,
-    "wins": 117
+    "wins": 102
    },
    "u04": {
     "games": 220,
-    "wins": 118
+    "wins": 114
    },
    "u05": {
     "games": 212,
-    "wins": 110
+    "wins": 99
    },
    "u06": {
     "games": 200,
-    "wins": 112
+    "wins": 115
    },
    "u07": {
     "games": 194,
-    "wins": 124
+    "wins": 97
    },
    "u08": {
     "games": 257,
-    "wins": 201
+    "wins": 189
    },
    "u09": {
     "games": 192,
-    "wins": 122
+    "wins": 99
    },
    "u10": {
     "games": 211,
-    "wins": 108
+    "wins": 94
    },
    "u11": {
     "games": 213,
-    "wins": 104
+    "wins": 102
    },
    "u12": {
     "games": 240,
-    "wins": 98
+    "wins": 101
    },
    "u13": {
     "games": 207,
-    "wins": 117
+    "wins": 97
    },
    "u14": {
     "games": 203,
-    "wins": 106
+    "wins": 82
    },
    "u15": {
     "games": 208,
-    "wins": 126
+    "wins": 128
    }
   },
   "u03": {
    "u01": {
     "games": 207,
-    "wins": 85
+    "wins": 103
    },
    "u02": {
     "games": 212,
-    "wins": 95
+    "wins": 110
    },
    "u04": {
     "games": 202,
-    "wins": 102
+    "wins": 104
    },
    "u05": {
     "games": 200,
-    "wins": 94
+    "wins": 89
    },
    "u06": {
     "games": 181,
-    "wins": 88
+    "wins": 98
    },
    "u07": {
     "games": 223,
-    "wins": 124
+    "wins": 116
    },
    "u08": {
     "games": 218,
-    "wins": 165
+    "wins": 159
    },
    "u09": {
     "games": 207,
-    "wins": 113
+    "wins": 117
    },
    "u10": {
     "games": 188,
-    "wins": 69
+    "wins": 77
    },
    "u11": {
     "games": 201,
-    "wins": 84
+    "wins": 90
    },
    "u12": {
     "games": 217,
-    "wins": 71
+    "wins": 87
    },
    "u13": {
     "games": 218,
-    "wins": 113
+    "wins": 112
    },
    "u14": {
     "games": 207,
-    "wins": 81
+    "wins": 90
    },
    "u15": {
     "games": 214,
-    "wins": 109
+    "wins": 107
    }
   },
   "u04": {
    "u01": {
     "games": 168,
-    "wins": 77
+    "wins": 74
    },
    "u02": {
     "games": 220,
-    "wins": 102
+    "wins": 106
    },
    "u03": {
     "games": 202,
-    "wins": 100
+    "wins": 98
    },
    "u05": {
     "games": 198,
-    "wins": 88
+    "wins": 86
    },
    "u06": {
     "games": 218,
-    "wins": 108
+    "wins": 129
    },
    "u07": {
     "games": 222,
-    "wins": 122
+    "wins": 102
    },
    "u08": {
     "games": 226,
-    "wins": 154
+    "wins": 159
    },
    "u09": {
     "games": 206,
-    "wins": 115
+    "wins": 105
    },
    "u10": {
     "games": 196,
-    "wins": 84
+    "wins": 79
    },
    "u11": {
     "games": 211,
-    "wins": 72
+    "wins": 79
    },
    "u12": {
     "games": 237,
-    "wins": 87
+    "wins": 99
    },
    "u13": {
     "games": 190,
-    "wins": 94
+    "wins": 98
    },
    "u14": {
     "games": 205,
-    "wins": 94
+    "wins": 85
    },
    "u15": {
     "games": 221,
-    "wins": 116
+    "wins": 118
    }
   },
   "u05": {
    "u01": {
     "games": 224,
-    "wins": 109
+    "wins": 107
    },
    "u02": {
     "games": 212,
-    "wins": 102
+    "wins": 113
    },
    "u03": {
     "games": 200,
-    "wins": 106
+    "wins": 111
    },
    "u04": {
     "games": 198,
-    "wins": 110
+    "wins": 112
    },
    "u06": {
     "games": 208,
-    "wins": 116
+    "wins": 137
    },
    "u07": {
     "games": 206,
-    "wins": 131
+    "wins": 125
    },
    "u08": {
     "games": 231,
-    "wins": 181
+    "wins": 167
    },
    "u09": {
     "games": 211,
-    "wins": 122
+    "wins": 127
    },
    "u10": {
     "games": 210,
-    "wins": 122
+    "wins": 119
    },
    "u11": {
     "games": 208,
-    "wins": 110
+    "wins": 111
    },
    "u12": {
     "games": 199,
-    "wins": 80
+    "wins": 102
    },
    "u13": {
     "games": 175,
-    "wins": 108
+    "wins": 103
    },
    "u14": {
     "games": 189,
-    "wins": 86
+    "wins": 75
    },
    "u15": {
     "games": 195,
-    "wins": 114
+    "wins": 122
    }
   },
   "u06": {
    "u01": {
     "games": 179,
-    "wins": 69
+    "wins": 74
    },
    "u02": {
     "games": 200,
-    "wins": 88
+    "wins": 85
    },
    "u03": {
     "games": 181,
-    "wins": 93
+    "wins": 83
    },
    "u04": {
     "games": 218,
-    "wins": 110
+    "wins": 89
    },
    "u05": {
     "games": 208,
-    "wins": 92
+    "wins": 71
    },
    "u07": {
     "games": 194,
-    "wins": 111
+    "wins": 80
    },
    "u08": {
     "games": 237,
-    "wins": 171
+    "wins": 148
    },
    "u09": {
     "games": 192,
-    "wins": 90
+    "wins": 91
    },
    "u10": {
     "games": 183,
-    "wins": 76
+    "wins": 58
    },
    "u11": {
     "games": 194,
-    "wins": 78
+    "wins": 70
    },
    "u12": {
     "games": 193,
-    "wins": 69
+    "wins": 57
    },
    "u13": {
     "games": 167,
-    "wins": 84
+    "wins": 73
    },
    "u14": {
     "games": 212,
-    "wins": 91
+    "wins": 78
    },
    "u15": {
     "games": 213,
-    "wins": 103
+    "wins": 99
    }
   },
   "u07": {
    "u01": {
     "games": 208,
-    "wins": 86
+    "wins": 83
    },
    "u02": {
     "games": 194,
-    "wins": 70
+    "wins": 97
    },
    "u03": {
     "games": 223,
-    "wins": 99
+    "wins": 107
    },
    "u04": {
     "games": 222,
-    "wins": 100
+    "wins": 120
    },
    "u05": {
     "games": 206,
-    "wins": 75
+    "wins": 81
    },
    "u06": {
     "games": 194,
-    "wins": 83
+    "wins": 114
    },
    "u08": {
     "games": 266,
-    "wins": 172
+    "wins": 181
    },
    "u09": {
     "games": 197,
-    "wins": 95
+    "wins": 96
    },
    "u10": {
     "games": 220,
-    "wins": 89
+    "wins": 92
    },
    "u11": {
     "games": 208,
-    "wins": 70
+    "wins": 94
    },
    "u12": {
     "games": 199,
-    "wins": 51
+    "wins": 81
    },
    "u13": {
     "games": 223,
-    "wins": 100
+    "wins": 113
    },
    "u14": {
     "games": 215,
-    "wins": 87
+    "wins": 95
    },
    "u15": {
     "games": 236,
-    "wins": 115
+    "wins": 117
    }
   },
   "u08": {
    "u01": {
     "games": 226,
-    "wins": 55
+    "wins": 47
    },
    "u02": {
     "games": 257,
-    "wins": 56
+    "wins": 68
    },
    "u03": {
     "games": 218,
-    "wins": 53
+    "wins": 59
    },
    "u04": {
     "games": 226,
-    "wins": 72
+    "wins": 67
    },
    "u05": {
     "games": 231,
-    "wins": 50
+    "wins": 64
    },
    "u06": {
     "games": 237,
-    "wins": 66
+    "wins": 89
    },
    "u07": {
     "games": 266,
-    "wins": 94
+    "wins": 85
    },
    "u09": {
     "games": 245,
-    "wins": 74
+    "wins": 73
    },
    "u10": {
     "games": 213,
-    "wins": 41
+    "wins": 43
    },
    "u11": {
     "games": 249,
-    "wins": 46
+    "wins": 55
    },
    "u12": {
     "games": 240,
@@ -525,15 +526,15 @@
    },
    "u13": {
     "games": 221,
-    "wins": 56
+    "wins": 57
    },
    "u14": {
     "games": 262,
-    "wins": 68
+    "wins": 65
    },
    "u15": {
     "games": 250,
-    "wins": 80
+    "wins": 75
    }
   },
   "u09": {
@@ -543,101 +544,101 @@
    },
    "u02": {
     "games": 192,
-    "wins": 70
+    "wins": 93
    },
    "u03": {
     "games": 207,
-    "wins": 94
+    "wins": 90
    },
    "u04": {
     "games": 206,
-    "wins": 91
+    "wins": 101
    },
    "u05": {
     "games": 211,
-    "wins": 89
+    "wins": 84
    },
    "u06": {
     "games": 192,
-    "wins": 102
+    "wins": 101
    },
    "u07": {
     "games": 197,
-    "wins": 102
+    "wins": 101
    },
    "u08": {
     "games": 245,
-    "wins": 171
+    "wins": 172
    },
    "u10": {
     "games": 182,
-    "wins": 72
+    "wins": 71
    },
    "u11": {
     "games": 203,
-    "wins": 83
+    "wins": 77
    },
    "u12": {
     "games": 229,
-    "wins": 66
+    "wins": 86
    },
    "u13": {
     "games": 193,
-    "wins": 102
+    "wins": 89
    },
    "u14": {
     "games": 209,
-    "wins": 82
+    "wins": 70
    },
    "u15": {
     "games": 191,
-    "wins": 100
+    "wins": 94
    }
   },
   "u10": {
    "u01": {
     "games": 202,
-    "wins": 105
+    "wins": 113
    },
    "u02": {
     "games": 211,
-    "wins": 103
+    "wins": 117
    },
    "u03": {
     "games": 188,
-    "wins": 119
+    "wins": 111
    },
    "u04": {
     "games": 196,
-    "wins": 112
+    "wins": 117
    },
    "u05": {
     "games": 210,
-    "wins": 88
+    "wins": 91
    },
    "u06": {
     "games": 183,
-    "wins": 107
+    "wins": 125
    },
    "u07": {
     "games": 220,
-    "wins": 131
+    "wins": 128
    },
    "u08": {
     "games": 213,
-    "wins": 172
+    "wins": 170
    },
    "u09": {
     "games": 182,
-    "wins": 110
+    "wins": 111
    },
    "u11": {
     "games": 225,
-    "wins": 101
+    "wins": 109
    },
    "u12": {
     "games": 222,
-    "wins": 82
+    "wins": 107
    },
    "u13": {
     "games": 180,
@@ -645,99 +646,99 @@
    },
    "u14": {
     "games": 202,
-    "wins": 90
+    "wins": 91
    },
    "u15": {
     "games": 213,
-    "wins": 141
+    "wins": 120
    }
   },
   "u11": {
    "u01": {
     "games": 187,
-    "wins": 92
+    "wins": 86
    },
    "u02": {
     "games": 213,
-    "wins": 109
+    "wins": 111
    },
    "u03": {
     "games": 201,
-    "wins": 117
+    "wins": 111
    },
    "u04": {
     "games": 211,
-    "wins": 139
+    "wins": 132
    },
    "u05": {
     "games": 208,
-    "wins": 98
+    "wins": 97
    },
    "u06": {
     "games": 194,
-    "wins": 116
+    "wins": 124
    },
    "u07": {
     "games": 208,
-    "wins": 138
+    "wins": 114
    },
    "u08": {
     "games": 249,
-    "wins": 203
+    "wins": 194
    },
    "u09": {
     "games": 203,
-    "wins": 120
+    "wins": 126
    },
    "u10": {
     "games": 225,
-    "wins": 124
+    "wins": 116
    },
    "u12": {
     "games": 226,
-    "wins": 86
+    "wins": 109
    },
    "u13": {
     "games": 189,
-    "wins": 115
+    "wins": 102
    },
    "u14": {
     "games": 168,
-    "wins": 105
+    "wins": 78
    },
    "u15": {
     "games": 210,
-    "wins": 126
+    "wins": 115
    }
   },
   "u12": {
    "u01": {
     "games": 195,
-    "wins": 110
+    "wins": 116
    },
    "u02": {
     "games": 240,
-    "wins": 142
+    "wins": 139
    },
    "u03": {
     "games": 217,
-    "wins": 146
+    "wins": 130
    },
    "u04": {
     "games": 237,
-    "wins": 150
+    "wins": 138
    },
    "u05": {
     "games": 199,
-    "wins": 119
+    "wins": 97
    },
    "u06": {
     "games": 193,
-    "wins": 124
+    "wins": 136
    },
    "u07": {
     "games": 199,
-    "wins": 148
+    "wins": 118
    },
    "u08": {
     "games": 240,
@@ -745,65 +746,65 @@
    },
    "u09": {
     "games": 229,
-    "wins": 163
+    "wins": 143
    },
    "u10": {
     "games": 222,
-    "wins": 140
+    "wins": 115
    },
    "u11": {
     "games": 226,
-    "wins": 140
+    "wins": 117
    },
    "u13": {
     "games": 200,
-    "wins": 135
+    "wins": 124
    },
    "u14": {
     "games": 229,
-    "wins": 130
+    "wins": 115
    },
    "u15": {
     "games": 223,
-    "wins": 153
+    "wins": 146
    }
   },
   "u13": {
    "u01": {
     "games": 186,
-    "wins": 73
+    "wins": 87
    },
    "u02": {
     "games": 207,
-    "wins": 90
+    "wins": 110
    },
    "u03": {
     "games": 218,
-    "wins": 105
+    "wins": 106
    },
    "u04": {
     "games": 190,
-    "wins": 96
+    "wins": 92
    },
    "u05": {
     "games": 175,
-    "wins": 67
+    "wins": 72
    },
    "u06": {
     "games": 167,
-    "wins": 83
+    "wins": 94
    },
    "u07": {
     "games": 223,
-    "wins": 123
+    "wins": 110
    },
    "u08": {
     "games": 221,
-    "wins": 165
+    "wins": 164
    },
    "u09": {
     "games": 193,
-    "wins": 91
+    "wins": 104
    },
    "u10": {
     "games": 180,
@@ -811,135 +812,135 @@
    },
    "u11": {
     "games": 189,
-    "wins": 74
+    "wins": 87
    },
    "u12": {
     "games": 200,
-    "wins": 65
+    "wins": 76
    },
    "u14": {
     "games": 208,
-    "wins": 87
+    "wins": 76
    },
    "u15": {
     "games": 182,
-    "wins": 92
+    "wins": 94
    }
   },
   "u14": {
    "u01": {
     "games": 202,
-    "wins": 88
+    "wins": 109
    },
    "u02": {
     "games": 203,
-    "wins": 97
+    "wins": 121
    },
    "u03": {
     "games": 207,
-    "wins": 126
+    "wins": 117
    },
    "u04": {
     "games": 205,
-    "wins": 111
+    "wins": 120
    },
    "u05": {
     "games": 189,
-    "wins": 103
+    "wins": 114
    },
    "u06": {
     "games": 212,
-    "wins": 121
+    "wins": 134
    },
    "u07": {
     "games": 215,
-    "wins": 128
+    "wins": 120
    },
    "u08": {
     "games": 262,
-    "wins": 194
+    "wins": 197
    },
    "u09": {
     "games": 209,
-    "wins": 127
+    "wins": 139
    },
    "u10": {
     "games": 202,
-    "wins": 112
+    "wins": 111
    },
    "u11": {
     "games": 168,
-    "wins": 63
+    "wins": 90
    },
    "u12": {
     "games": 229,
-    "wins": 99
+    "wins": 114
    },
    "u13": {
     "games": 208,
-    "wins": 121
+    "wins": 132
    },
    "u15": {
     "games": 217,
-    "wins": 136
+    "wins": 131
    }
   },
   "u15": {
    "u01": {
     "games": 210,
-    "wins": 75
+    "wins": 66
    },
    "u02": {
     "games": 208,
-    "wins": 82
+    "wins": 80
    },
    "u03": {
     "games": 214,
-    "wins": 105
+    "wins": 107
    },
    "u04": {
     "games": 221,
-    "wins": 105
+    "wins": 103
    },
    "u05": {
     "games": 195,
-    "wins": 81
+    "wins": 73
    },
    "u06": {
     "games": 213,
-    "wins": 110
+    "wins": 114
    },
    "u07": {
     "games": 236,
-    "wins": 121
+    "wins": 119
    },
    "u08": {
     "games": 250,
-    "wins": 170
+    "wins": 175
    },
    "u09": {
     "games": 191,
-    "wins": 91
+    "wins": 97
    },
    "u10": {
     "games": 213,
-    "wins": 72
+    "wins": 93
    },
    "u11": {
     "games": 210,
-    "wins": 84
+    "wins": 95
    },
    "u12": {
     "games": 223,
-    "wins": 70
+    "wins": 77
    },
    "u13": {
     "games": 182,
-    "wins": 90
+    "wins": 88
    },
    "u14": {
     "games": 217,
-    "wins": 81
+    "wins": 86
    }
   }
  }

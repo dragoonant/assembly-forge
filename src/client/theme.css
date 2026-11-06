@@ -38,6 +38,9 @@ button:disabled { opacity: 0.45; cursor: default; }
 .topbar .tools { margin-left: auto; display: flex; gap: 6px; pointer-events: auto; }
 .topbar .tools button { min-width: 34px; height: 32px; }
 .topbar .tools button.on { border-color: var(--amber); color: var(--amber); }
+.topbar .tools .watching { align-self: center; padding: 2px 8px; border-radius: 10px; font-size: 11px; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--amber); border: 1px solid var(--amber); }
+.topbar .tools button.take-over { padding: 0 10px; border-color: var(--amber); }
 
 /* folding panels: the header minimizes a panel to one line */
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
@@ -178,6 +181,8 @@ button:disabled { opacity: 0.45; cursor: default; }
   .hexinfo { bottom: 84px; }
   .topbar h1 { font-size: 12px; letter-spacing: 0.06em; }
   .topbar .tools .speed { display: none; }
+  .topbar.watch .tools .speed { display: inline-block; }
+  .topbar .tools .watching { display: none; }
   .topbar { gap: 10px; }
   .topbar .clock { display: none; }
 }

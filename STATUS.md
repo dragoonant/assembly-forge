@@ -21,6 +21,15 @@ new set next.**
   client's new squad-select screen is being written against `Squads` in `src/client/engine.ts`, and the models for u07
   to u15 are being made. Self-play over 3,600 random-squad games: no crashes, no forced passes; the utility walker (u08)
   wins about a quarter of its games and the duelist (u12) about two thirds, the rest 44 to 59%.
+- AI changes (2026-11-05), measured on our layout and on the publisher's example setup (below): a move is credited
+  with a Rescue it opens up as well as a shot (before, a side rescued about one of seven Garrisons a game and walked
+  past its own); Energize is valued by the Energy Command it pays for this activation; handing an Upgrade over is
+  scored by how much better the receiver uses it (it was scored as wasted); and the danger check counts half of an
+  enemy's attack from where it could Advance to (`TUNING.threatReach`), so a melee machine three hexes off is no
+  longer harmless. Garrisons rescued per game on the example setup went from 1.1 to 2.7 a side.
+- `tools/ai-matchups.js` takes `layout=<name>` (a layout file in the git-ignored local pack folder) and
+  `tune=key:value`. The publisher's example setup from the play guide (seven Garrisons a side, four Objectives, a
+  two-level central hill) is transcribed there for self-play only; it is not in the repository.
 - Card mechanics: a resumable attack with response windows, area attacks, grants, attack cards, Push and Pull as the
   acting player's choice, unit responses that ask for their target (or can be declined), and the would-be-defeated window
   for attack and ability damage.
@@ -35,6 +44,10 @@ new set next.**
   unit-versus-unit matchup table of 3,600 AI games, `src/ai/matchups.json`): Random, Easy (it fields machines the
   player's squad counters well) or Hard (it counter-picks). The difficulty is remembered. `?squad=u01,u02,u03&foe=...`
   sets both squads; the old `?team=t_lance` names still work.
+- Watch CPU vs CPU (2026-11-05): a button on the squad select. The CPU plays the player's squad (or one it picks at
+  random when the squad is not full) against its own pick at the chosen difficulty; the briefing skips the deck picker,
+  the top bar shows "Watching" and the speed buttons (also on a phone), and Take over hands side 0 back to the player
+  from its next decision. A new game goes back to playing.
 - Card faces (`src/client/hud/Cards.tsx`), our own frame: a unit card has the machine's render over a glow in its side
   colour, name and role, hexagonal HP, VP and Timeline badges, both weapons as rows of numbers with their critical
   effects, abilities with colour-coded timing chips and Energy cost, and its traits; full size on the select screen,
@@ -125,8 +138,9 @@ new set next.**
   (`e2e-out/fx-*.png`, the second wave's beam, cone blast, mortar, missiles, rifle and kick among them), the character select (pick three with two taps each, lock in, the CPU's squad
   revealed) on desktop and on a phone in landscape, a pattern weapon's preview and two-tap fire, a drone placed by its
   Command, and every clip of all fifteen machines in the figure viewer. Screenshots looked at.
-- `node tools/ai-matchups.js 3600`: no crashes or forced passes. Win rates by unit 44 to 59%, except the utility walker
-  (u08, 26%) and the duelist (u12, 66%), which carry their cards' numbers untuned.
+- `node tools/ai-matchups.js 3600` with the new AI: no crashes or forced passes, seats 1832 to 1768. Win rates by unit
+  42 to 60% except the utility walker (u08, 27%); the duelist (u12) came down from 66% to 60%. On the publisher's
+  example setup: 43 to 61%, u08 29% (from 21%), u12 53% (from 65%). The cards' numbers are untouched.
 
 ### Earlier (2026-11-04)
 - `npm run e2e` (14 tests, including the mouse map, including the HUD on a phone in landscape with every panel folded and no text selection, a tap
@@ -154,10 +168,12 @@ new set next.**
   machines while the briefing is up (Deploy waits for them).
 - The new machines' rigs share the fused-mesh stretch (u13's rifle to foot when aiming, u10's forearm to hip in the
   swing, u09's launcher to foot in the jump).
-- u08 and u12 are far from balanced against the rest (see above).
+- u08 is still well behind (27 to 29%). It is a strength-3, 8 HP melee machine and is destroyed about twice a game,
+  handing over 5 VP each time; the AI fixes doubled its Rescues but not that. Its card's numbers are untouched.
 - Mixed-team games have run about 57% to side 0 across runs with unpaired seeds; re-check with paired seeds.
 - Not checked on a phone or a real GPU; only headless software GL.
 - three, R3F and drei build into one chunk of about 1.3 MB (330 kB gzipped); splitting it is a later tidy-up.
 
 ## Next
-The owner reviews the new machines, squad select and cards; balance u08 and u12 if the owner wants house numbers.
+The owner reviews the new machines, squad select, cards and attack effects, and watches a CPU vs CPU game; a house
+number for u08 if the owner wants one.

@@ -70,8 +70,8 @@ function squadParam(v: string | null): string[] | null {
 function readParams(): void {
   const p = new URLSearchParams(window.location.search)
   const ai = p.get('ai')
-  if (ai === 'both') setStore({ ai: [true, true] })
-  else if (ai === 'none') setStore({ ai: [false, false] })
+  if (ai === 'both') setStore({ ai: [true, true], aiBase: [true, true] })
+  else if (ai === 'none') setStore({ ai: [false, false], aiBase: [false, false] })
   const speed = p.get('speed')
   if (speed === 'fast' || speed === 'instant') setStore({ speed: speed as Speed })
   if (p.has('slowmo')) setSlowmo(Number(p.get('slowmo')))
