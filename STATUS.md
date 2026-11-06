@@ -169,11 +169,11 @@ new set next.**
 - The new machines' rigs share the fused-mesh stretch (u13's rifle to foot when aiming, u10's forearm to hip in the
   swing, u09's launcher to foot in the jump).
 - u08 is still well behind (27 to 29%). It is a strength-3, 8 HP melee machine and is destroyed about twice a game,
-  handing over 5 VP each time; the AI fixes doubled its Rescues but not that. Its card's numbers are untouched.
+  handing over 5 VP each time; the AI fixes doubled its Rescues but not that. The owner decided (2026-11-05) that it
+  stays on its published numbers: no house balance changes.
 - Mixed-team games have run about 57% to side 0 across runs with unpaired seeds; re-check with paired seeds.
 - Not checked on a phone or a real GPU; only headless software GL.
 - three, R3F and drei build into one chunk of about 1.3 MB (330 kB gzipped); splitting it is a later tidy-up.
 
 ## Next
-The owner reviews the new machines, squad select, cards and attack effects, and watches a CPU vs CPU game; a house
-number for u08 if the owner wants one.
+The owner reviews the new machines, squad select, cards and attack effects, and watches a CPU vs CPU game.
